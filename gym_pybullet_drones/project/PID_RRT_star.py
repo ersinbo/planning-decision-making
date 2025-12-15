@@ -1,3 +1,5 @@
+print("=== RUNNING PID_RRT_star.py (edited version) ===")
+print("=== entered run() ===")
 
 from RRT_star import RRTStar_GRAPH, draw_rrt_tree_3d, draw_rrt_path_3d
 
@@ -83,18 +85,24 @@ def run(
     rrt = RRTStar_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=15000,
+        n_iterations=150,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 1.0),
         z_limits=(0.1, 1.0),        
         goal_sample_rate=0.1,
         goal_threshold=0.08,
-        neighbor_radius=0.2
+        neighbor_radius=0.5
     ) # create RRT graph instance
 
     success = rrt.build() # build RRT graph
+    print("RRT* success:", success)
+    print("num nodes:", len(rrt.nodes))
+    print("goal index:", rrt.goal_index)
+
     path = rrt.extract_path() # extract path from RRT graph
+    print("path length:", None if path is None else len(path))
+
     NUM_WP = len(path) # number of waypoints for the drone to follow
     TARGET_POS = np.zeros((NUM_WP, 3), dtype=float) # Target_POS stores the waypoints for the RRT path.
 
@@ -137,8 +145,9 @@ def run(
             target_pos=TARGET_POS[wp_counter],
             target_rpy=INIT_RPYS[0, :]
         )
-        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.0 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
+        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.05 and wp_counter < NUM_WP - 1:
             wp_counter += 1
+
 
         logger.log(
             drone=0,
