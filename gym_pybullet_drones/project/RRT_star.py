@@ -4,6 +4,7 @@ import pybullet as p
 
 from RRT_new import RRT_GRAPH
 
+
 class RRTStar_GRAPH(RRT_GRAPH):
     def __init__(
         self,
@@ -16,7 +17,7 @@ class RRTStar_GRAPH(RRT_GRAPH):
         z_limits,
         goal_sample_rate=0.1,
         goal_threshold=0.05,
-        neighbor_radius=0.2
+        neighbor_radius=0.5
     ):
         super().__init__(
             start,
@@ -29,57 +30,96 @@ class RRTStar_GRAPH(RRT_GRAPH):
             goal_sample_rate,
             goal_threshold
         )
-        self.neighbor_radius = neighbor_radius # radius to search for nearby nodes for rewiring
-        self.costs = [0.0] # list to store cost to reach each node
+        self.neighbor_radius = neighbor_radius
+        self.costs = [0.0]          # cost-to-come for each node
+        self.children = [set()]     # adjacency: children[i] = set of children indices of node i
 
     def add_node_edge(self, q_new, parent_index):
-        """Add new node to the tree with given parent index and compute its cost
-            and return the index of the new node."""
-        self.nodes.append(q_new) 
+        """Add new node, set parent, and compute its cost-to-come. Return new node index."""
+        new_index = len(self.nodes)
+        self.nodes.append(q_new)
         self.parents.append(parent_index)
 
-        #compute cost from start to new node 
-        cost_to_new = (self.costs[parent_index] + np.linalg.norm(q_new - self.nodes[parent_index]))
-        self.costs.append(cost_to_new)
-        return len(self.nodes) - 1
+        # keep children list aligned
+        self.children.append(set())
+
+        # attach to parent in adjacency
+        if parent_index is not None:
+            self.children[parent_index].add(new_index)
+            cost_to_new = self.costs[parent_index] + np.linalg.norm(q_new - self.nodes[parent_index])
+        else:
+            cost_to_new = 0.0
+
+        self.costs.append(float(cost_to_new))
+        return new_index
 
     def find_nearby_nodes(self, q_new):
-        """Find indices of nodes within neighbor_radius of q_new"""
-        indexes = []
+        """Find indices of nodes within fixed neighbor_radius of q_new (O(n))."""
+        idxs = []
         for i, node in enumerate(self.nodes):
             if np.linalg.norm(node - q_new) <= self.neighbor_radius:
-                indexes.append(i)
-        return indexes
-    
+                idxs.append(i)
+        return idxs
+
     def best_parent_search(self, q_new, near_indexes, default_parent):
-        """Choose the best parent for q_new from near_indexes based on cost"""
+        """Choose the best parent for q_new from near_indexes based on cost-to-come + edge length."""
         best_parent = default_parent
         best_cost = self.costs[default_parent] + np.linalg.norm(self.nodes[default_parent] - q_new)
 
-        # Iterate through nearby nodes to find the one that gives the lowest cost to q_new wit respect to the start node
         for i in near_indexes:
+            # (optional) skip self, though q_new is not in the tree yet
             new_cost = self.costs[i] + np.linalg.norm(self.nodes[i] - q_new)
             if new_cost < best_cost:
-                # if self.collision_check(self.nodes[i], q_new):
-                #     best_cost = new_cost
-                #     best_parent = i
+                # if self.collision_check(self.nodes[i], q_new):  # later
                 best_cost = new_cost
                 best_parent = i
-        return best_parent, best_cost
+
+        return best_parent, float(best_cost)
+
+    def update_subtree_costs(self, root_index):
+        """
+        Update costs for the subtree rooted at root_index using children adjacency.
+        This is O(size of subtree), not O(n²).
+        """
+        stack = [root_index]
+        while stack:
+            u = stack.pop()
+            for v in self.children[u]:
+                self.costs[v] = self.costs[u] + np.linalg.norm(self.nodes[v] - self.nodes[u])
+                stack.append(v)
 
     def rewire(self, new_index, near_indexes):
+        """Try to rewire nearby nodes through new_index if that lowers their cost."""
         q_new = self.nodes[new_index]
+
         for i in near_indexes:
             if i == new_index:
                 continue
-            new_cost = self.costs[new_index] + np.linalg.norm(self.nodes[i] - q_new)
-            if new_cost < self.costs[i]:
-                # if self.collision_check(q_new, self.nodes[i]):
-                self.parents[i] = new_index
-                self.costs[i] = new_cost
 
+            # cost if we go start -> ... -> new_index -> i
+            candidate_cost = self.costs[new_index] + np.linalg.norm(self.nodes[i] - q_new)
+
+            if candidate_cost < self.costs[i]:
+                # if self.collision_check(q_new, self.nodes[i]):  # later
+                old_parent = self.parents[i]
+
+                # detach i from old parent's children set
+                if old_parent is not None:
+                    self.children[old_parent].discard(i)
+
+                # re-parent i under new_index
+                self.parents[i] = new_index
+                self.children[new_index].add(i)
+
+                # update cost for i, then propagate to its descendants
+                self.costs[i] = float(candidate_cost)
+                self.update_subtree_costs(i)
 
     def build(self):
+        """Build the RRT* graph (fixed radius)."""
+        best_goal = None
+        best_goal_cost = float("inf")
+
         for _ in range(self.n_iterations):
             q_rand = self.sample()
 
@@ -90,24 +130,24 @@ class RRTStar_GRAPH(RRT_GRAPH):
             # if not self.collision_check(q_near, q_new):
             #     continue
 
-            # compute neighbors BEFORE adding (standard)
             near_indexes = self.find_nearby_nodes(q_new)
 
-            # choose best parent
             best_parent, _ = self.best_parent_search(q_new, near_indexes, index_near)
 
-            # add node with best parent
             new_index = self.add_node_edge(q_new, best_parent)
 
-            # rewire neighbors through new node
+            # Important: near set for rewiring should include nodes near q_new in the existing tree;
+            # using near_indexes computed before adding is fine.
             self.rewire(new_index, near_indexes)
 
-            if self.stop_condition(q_new):
-                self.goal_index = new_index
-                return True
-        self.goal_index = None
-        return False
-                
+            if self.stop_condition(self.nodes[new_index]):
+                if self.costs[new_index] < best_goal_cost:
+                    best_goal_cost = self.costs[new_index]
+                    best_goal = new_index
+
+        self.goal_index = best_goal
+        return best_goal is not None
+
 
 # ---------- PyBullet drawing helpers ----------
 def draw_rrt_tree_3d(nodes, parents, pyb_client, line_width=1.0, life_time=0.0):
