@@ -110,7 +110,6 @@ def run(
 
 
 
-
     logger = Logger(logging_freq_hz=control_freq_hz,
                     output_folder=output_folder,
                     colab=colab
@@ -127,7 +126,9 @@ def run(
 
     for i in range(0, int(duration_sec*env.CTRL_FREQ)): 
 
-        obs, reward, terminated, truncated, info = env.step(action) # step the environment with the current control inputs
+        obs, reward, terminated, truncated, info = env.step(action) # step the environment with the current control inputs. Obs contains the current state of the drone.
+
+        pos = obs[0][0:3]  # current position of the drone
 
         action[0,:], _, _ = ctrl.computeControlFromState(
             control_timestep=env.CTRL_TIMESTEP,
@@ -135,11 +136,9 @@ def run(
             target_pos=TARGET_POS[wp_counter],
             target_rpy=INIT_RPYS[0, :]
         )
-
-        if wp_counter < NUM_WP - 1:
+        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.0 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
             wp_counter += 1
 
-        #### Log the simulation ####################################
         logger.log(
             drone=0,
             timestamp=i/env.CTRL_FREQ,
