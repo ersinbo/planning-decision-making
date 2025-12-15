@@ -15,7 +15,8 @@ The drones move, at different altitudes, along cicular trajectories
 in the X-Y plane, around point (0, -.3).
 
 """
-from RRT import RRTNode, rrt_build_tree, draw_rrt_tree, draw_rrt_path, extract_path, spawn_tiny_sphere
+# from RRT import RRTNode, rrt_build_tree, draw_rrt_tree, draw_rrt_path, extract_path, spawn_tiny_sphere
+from RRT_new import RRT_GRAPH, draw_rrt_tree_3d, draw_rrt_path_3d
 
 import os
 import time
@@ -228,35 +229,81 @@ def run(
     '''
 
     # ---------- build and draw RRT tree here ----------
-    # 2D RRT in (x, y) using the first drone's start position
-    start = [INIT_XYZS[0, 0], INIT_XYZS[0, 1]]
-    goal  = [0.5, 0.8]   # choose any goal in your workspace
+# ---------- build RRT path (2D) ----------
+    start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)
+    goal  = np.array([0.5, 0.8, 0.6], dtype=float) 
 
-    nodes, goal_idx = rrt_build_tree(
+    rrt = RRT_GRAPH(
         start=start,
         goal=goal,
-        n_iterations=500,
-        step_size=0.1,
+        n_iterations=1500,
+        step_size=0.15,
         x_limits=(-1.0, 1.0),
-        y_limits=(-1.0, 1.0)
-)
-    spawn_tiny_sphere(goal[0], goal[1], z=0.1)
-    draw_rrt_tree(nodes, PYB_CLIENT, line_width=1.0, life_time=0.0)
-    path = extract_path(nodes, goal_index=goal_idx)
-    draw_rrt_path(path, PYB_CLIENT, line_width=2.0, life_time=0.0)
+        y_limits=(-1.0, 1.0),
+        z_limits=(0.1, 1.0),        
+        goal_sample_rate=0.1,
+        goal_threshold=0.08
+    )
 
-    end = path[-1]
-
+    success = rrt.build()
+    path = rrt.extract_path()
     NUM_WP = len(path)
-    TARGET_POS = np.zeros((NUM_WP,3)) # Target_POS stores the waypoints for the circular trajectory.
+    TARGET_POS = np.zeros((NUM_WP, 3), dtype=float)
 
     for k, pt in enumerate(path):
-        TARGET_POS[k, 0] = pt[0]                 # x
-        TARGET_POS[k, 1] = pt[1]                 # y
-        TARGET_POS[k, 2] = INIT_XYZS[0, 2]       # z (keep constant altitude)
+        TARGET_POS[k, :] = pt
+
+
+    if not success or path is None:
+        raise RuntimeError("RRT did not reach the goal (try more iterations / bigger step_size / different goal)")
+
+    # ---------- convert RRT path to PID waypoints ----------
+    # NUM_WP = len(path)
+    # TARGET_POS = np.zeros((NUM_WP, 3), dtype=float)
+
+    # z_const = INIT_XYZS[0, 2]  # keep altitude constant
+    # for k, pt in enumerate(path):
+    #     TARGET_POS[k, 0] = pt[0]
+    #     TARGET_POS[k, 1] = pt[1]
+    #     TARGET_POS[k, 2] = z_const
+
+    # ---------- DRAW RRT TREE + PATH ----------
+    draw_rrt_tree_3d(rrt.nodes, rrt.parents, PYB_CLIENT, life_time=0.0)
+    draw_rrt_path_3d(path, PYB_CLIENT, life_time=0.0)
+
+    # ------------------------------------------------------
+
+    wp_counters = np.zeros(num_drones, dtype=int)
+
+    # 2D RRT in (x, y) using the first drone's start position
+        #     start = [INIT_XYZS[0, 0], INIT_XYZS[0, 1]]
+        #     goal  = [0.5, 0.8]   # choose any goal in your workspace
+
+        #     nodes, goal_idx = rrt_build_tree(
+        #         start=start,
+        #         goal=goal,
+        #         n_iterations=500,
+        #         step_size=0.1,
+        #         x_limits=(-1.0, 1.0),
+        #         y_limits=(-1.0, 1.0)
+        # )
+        #     spawn_tiny_sphere(goal[0], goal[1], z=0.1)
+        #     draw_rrt_tree(nodes, PYB_CLIENT, line_width=1.0, life_time=0.0)
+        #     path = extract_path(nodes, goal_index=goal_idx)
+        #     draw_rrt_path(path, PYB_CLIENT, line_width=2.0, life_time=0.0)
+
+        #     end = path[-1]
+    
+        #     NUM_WP = len(path)
+        #     TARGET_POS = np.zeros((NUM_WP,3)) # Target_POS stores the waypoints for the circular trajectory.
+
+        #     for k, pt in enumerate(path):
+        #         TARGET_POS[k, 0] = pt[0]                 # x
+        #         TARGET_POS[k, 1] = pt[1]                 # y
+        #         TARGET_POS[k, 2] = INIT_XYZS[0, 2]       # z (keep constant altitude)
 
     # one waypoint index per drone
-    wp_counters = np.array([0 for _ in range(num_drones)])    #### Initialize the logger #################################
+    # wp_counters = np.array([0 for _ in range(num_drones)])    #### Initialize the logger #################################
     logger = Logger(logging_freq_hz=control_freq_hz,
                     num_drones=num_drones,
                     output_folder=output_folder,
@@ -301,14 +348,16 @@ def run(
 
         #### Go to the next way point and loop #####################
         for j in range(num_drones):
-            wp_counters[j] = wp_counters[j] + 1 if wp_counters[j] < (NUM_WP-1) else 0
+            wp_counters[j] = min(wp_counters[j] + 1, NUM_WP - 1)
+
 
         #### Log the simulation ####################################
         for j in range(num_drones):
             logger.log(drone=j,
                        timestamp=i/env.CTRL_FREQ,
                        state=obs[j],
-                       control=np.hstack([TARGET_POS[wp_counters[j], 0:2], INIT_XYZS[j, 2], INIT_RPYS[j, :], np.zeros(6)])
+                       control=np.hstack([TARGET_POS[wp_counters[j], 0:3], INIT_RPYS[j, :], np.zeros(6)])
+
                        # control=np.hstack([INIT_XYZS[j, :]+TARGET_POS[wp_counters[j], :], INIT_RPYS[j, :], np.zeros(6)])
                        )
 
