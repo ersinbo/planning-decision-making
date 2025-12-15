@@ -31,12 +31,6 @@ import matplotlib.pyplot as plt
 
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 
-'''
-library gym_pybullet_drones has some utilities for simulating drones using PyBullet.
-It includes different drone models, physics engines, and control algorithms.
-DroneModel and Physics are enums that define the available drone models and physics engines.
-
-'''
 
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary # CtrlAviary is a custom environment for controlling multiple drones in a PyBullet simulation.
 
