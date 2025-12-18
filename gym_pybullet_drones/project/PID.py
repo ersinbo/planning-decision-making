@@ -242,20 +242,20 @@ def run(
         y_limits=(-1.0, 1.0),
         z_limits=(0.1, 1.0),        
         goal_sample_rate=0.1,
-        goal_threshold=0.08
+        goal_threshold=0.08, 
+        rebuild_kdtree_every=50
     )
 
     success = rrt.build()
     path = rrt.extract_path()
-    NUM_WP = len(path)
-    TARGET_POS = np.zeros((NUM_WP, 3), dtype=float)
-
-    for k, pt in enumerate(path):
-        TARGET_POS[k, :] = pt
-
 
     if not success or path is None:
         raise RuntimeError("RRT did not reach the goal (try more iterations / bigger step_size / different goal)")
+    TARGET_POS = np.array(path, dtype=float)
+    NUM_WP = len(TARGET_POS)
+
+    # for k, pt in enumerate(path):
+    #     TARGET_POS[k, :] = pt
 
     # ---------- convert RRT path to PID waypoints ----------
     # NUM_WP = len(path)
