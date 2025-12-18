@@ -82,7 +82,7 @@ def run(
     rrt = RRTStar_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=15000,
+        n_iterations=150,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 1.0),
