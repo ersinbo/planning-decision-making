@@ -177,7 +177,7 @@ def run(
             target_pos=TARGET_POS[wp_counter],
             target_rpy=INIT_RPYS[0, :]
         )
-        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.0 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
+        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.05 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
             wp_counter += 1
 
         logger.log(
