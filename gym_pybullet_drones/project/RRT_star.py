@@ -17,6 +17,7 @@ class RRTStar_GRAPH(RRT_GRAPH):
         z_limits,
         goal_sample_rate=0.1,
         goal_threshold=0.05,
+        rebuild_kdtree_every=50,
         neighbor_radius=0.5
     ):
         super().__init__(
@@ -28,38 +29,48 @@ class RRTStar_GRAPH(RRT_GRAPH):
             y_limits,
             z_limits,
             goal_sample_rate,
-            goal_threshold
+            goal_threshold,
+            rebuild_kdtree_every
         )
         self.neighbor_radius = neighbor_radius
         self.costs = [0.0]          # cost-to-come for each node
-        self.children = [set()]     # adjacency: children[i] = set of children indices of node i
 
+    def edge_cost(self, q1, q2):
+        """Compute cost of edge between q1 and q2 (Euclidean distance)."""
+        return np.linalg.norm(q2 - q1)
+    
     def add_node_edge(self, q_new, parent_index):
-        """Add new node, set parent, and compute its cost-to-come. Return new node index."""
-        new_index = len(self.nodes)
+        """Add new node, set parent, and compute its cost-to-come. Return new node index."""  
         self.nodes.append(q_new)
         self.parents.append(parent_index)
 
-        # keep children list aligned
-        self.children.append(set())
+        new_index = len(self.nodes) - 1
+        self._recent_indices.append(new_index)
 
-        # attach to parent in adjacency
-        if parent_index is not None:
-            self.children[parent_index].add(new_index)
-            cost_to_new = self.costs[parent_index] + np.linalg.norm(q_new - self.nodes[parent_index])
-        else:
-            cost_to_new = 0.0
+        cost_to_new = self.costs[parent_index] + float(np.linalg.norm(q_new - self.nodes[parent_index]))
+        self.costs.append(cost_to_new)
 
-        self.costs.append(float(cost_to_new))
+        self._rebuild_kdtree_if_needed()
         return new_index
 
     def find_nearby_nodes(self, q_new):
-        """Find indices of nodes within fixed neighbor_radius of q_new (O(n))."""
-        idxs = []
-        for i, node in enumerate(self.nodes):
-            if np.linalg.norm(node - q_new) <= self.neighbor_radius:
-                idxs.append(i)
-        return idxs
+        """Find indices of nodes within fixed neighbor_radius of q_new."""
+        r = self.neighbor_radius
+        indexes = self._kdtree.query_ball_point(q_new, self.neighbor_radius)
+
+        for i in self._recent_indices:
+            if float(np.linalg.norm(self.nodes[i] - q_new)) <= r:
+                indexes.append(i)
+
+        return list({int(i) for i in indexes})
+    
+    # def find_nearby_nodes(self, q_new):
+    #     """Find indices of nodes within fixed neighbor_radius of q_new (O(n))."""
+    #     idxs = []
+    #     for i, node in enumerate(self.nodes):
+    #         if np.linalg.norm(node - q_new) <= self.neighbor_radius:
+    #             idxs.append(i)
+    #     return idxs
 
     def best_parent_search(self, q_new, near_indexes, default_parent):
         """Choose the best parent for q_new from near_indexes based on cost-to-come + edge length."""
@@ -67,6 +78,7 @@ class RRTStar_GRAPH(RRT_GRAPH):
         best_cost = self.costs[default_parent] + np.linalg.norm(self.nodes[default_parent] - q_new)
 
         for i in near_indexes:
+            i = int(i)
             # (optional) skip self, though q_new is not in the tree yet
             new_cost = self.costs[i] + np.linalg.norm(self.nodes[i] - q_new)
             if new_cost < best_cost:
@@ -74,19 +86,16 @@ class RRTStar_GRAPH(RRT_GRAPH):
                 best_cost = new_cost
                 best_parent = i
 
-        return best_parent, float(best_cost)
+        return best_parent, best_cost
 
-    def update_subtree_costs(self, root_index):
+    def _update_subtree_costs(self, root_index):
         """
         Update costs for the subtree rooted at root_index using children adjacency.
-        This is O(size of subtree), not O(n²).
         """
-        stack = [root_index]
-        while stack:
-            u = stack.pop()
-            for v in self.children[u]:
-                self.costs[v] = self.costs[u] + np.linalg.norm(self.nodes[v] - self.nodes[u])
-                stack.append(v)
+        for child, parent in enumerate(self.parents):
+            if parent == root_index:
+                self.costs[child] = self.costs[root_index] + np.linalg.norm(self.nodes[child] - self.nodes[root_index])
+                self._update_subtree_costs(child)
 
     def rewire(self, new_index, near_indexes):
         """Try to rewire nearby nodes through new_index if that lowers their cost."""
@@ -97,23 +106,20 @@ class RRTStar_GRAPH(RRT_GRAPH):
                 continue
 
             # cost if we go start -> ... -> new_index -> i
-            candidate_cost = self.costs[new_index] + np.linalg.norm(self.nodes[i] - q_new)
+            new_cost  = self.costs[new_index] + np.linalg.norm(self.nodes[i] - q_new)
+            
+            if i == 0:
+                continue  # never rewire the root
 
-            if candidate_cost < self.costs[i]:
-                # if self.collision_check(q_new, self.nodes[i]):  # later
-                old_parent = self.parents[i]
-
-                # detach i from old parent's children set
-                if old_parent is not None:
-                    self.children[old_parent].discard(i)
+            if new_cost  < self.costs[i]:
+                # if self.collision_check(q_new, self.nodes[i]):  
 
                 # re-parent i under new_index
                 self.parents[i] = new_index
-                self.children[new_index].add(i)
 
                 # update cost for i, then propagate to its descendants
-                self.costs[i] = float(candidate_cost)
-                self.update_subtree_costs(i)
+                self.costs[i] = new_cost
+                self._update_subtree_costs(i)
 
     def build(self):
         """Build the RRT* graph (fixed radius)."""
@@ -123,7 +129,7 @@ class RRTStar_GRAPH(RRT_GRAPH):
         for _ in range(self.n_iterations):
             q_rand = self.sample()
 
-            index_near = self.nearest(q_rand)
+            index_near = self.nearest_kdtree(q_rand)
             q_near = self.nodes[index_near]
             q_new = self.steer_step_size(q_near, q_rand)
 
@@ -140,7 +146,7 @@ class RRTStar_GRAPH(RRT_GRAPH):
             # using near_indexes computed before adding is fine.
             self.rewire(new_index, near_indexes)
 
-            if self.stop_condition(self.nodes[new_index]):
+            if self.stop_condition(q_new):
                 if self.costs[new_index] < best_goal_cost:
                     best_goal_cost = self.costs[new_index]
                     best_goal = new_index
