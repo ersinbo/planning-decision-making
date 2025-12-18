@@ -20,6 +20,8 @@ from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary # CtrlAviary is a cus
 from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl 
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.utils import sync, str2bool 
+from obstacles import walls
+
 DEFAULT_DRONES = DroneModel("cf2x") # CF2X and CF2P are different drone models available in the gym_pybullet_drones library. CF2X is a more advanced model with better performance and stability, while CF2P is a simpler model that is easier to control.
 DEFAULT_NUM_DRONES = 1
 DEFAULT_PHYSICS = Physics("pyb")
@@ -59,7 +61,7 @@ def run(
     INIT_RPYS = np.array([[0, 0,  0]]) # Initial orientations of the drones (roll, pitch, yaw)
 
     #### Create the environment ################################
-    env = CtrlAviary(drone_model=drone,
+    env = walls(drone_model=drone,
                         num_drones=num_drones,
                         initial_xyzs=INIT_XYZS,
                         initial_rpys=INIT_RPYS,
