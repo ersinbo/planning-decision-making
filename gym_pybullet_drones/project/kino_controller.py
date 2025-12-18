@@ -51,6 +51,13 @@ class KinoTrajectoryController:
     """
     def __init__(self, path, dt: float, tmin=0.05, tmax=3.0, n=30,
                  pos_switch_tol=0.08, vel_switch_tol=0.4):
+        ''' 
+        Parameters:
+        path : list of np.ndarray
+            List of waypoints (states) to follow, each of shape (6,).
+        dt : float
+            Time step for the controller.
+        '''
         self.path = None if path is None else [np.asarray(p, dtype=float).reshape(6,) for p in path]
         self.dt = float(dt)
         self.tmin, self.tmax, self.n = float(tmin), float(tmax), int(n)
@@ -62,6 +69,11 @@ class KinoTrajectoryController:
         self._prep_segment()
 
     def _prep_segment(self):
+        '''
+        Prepares the current segment for tracking by computing optimal time and co-states.
+        what is a segment?
+        A segment is the portion of the trajectory between two consecutive waypoints in the path.
+        '''
         self.t_in_seg = 0.0
         self.tau = None
         self.dp = None
@@ -84,6 +96,9 @@ class KinoTrajectoryController:
         self.dv = d[3:]
 
     def _segment_done(self, state):
+        '''
+        Checks if the current segment is completed based on position and velocity tolerances or time.
+        '''
         if self.path is None or len(self.path) < 2:
             return True
         if self.seg >= len(self.path) - 1:
@@ -97,6 +112,15 @@ class KinoTrajectoryController:
         return time_done or (pos_err < self.pos_switch_tol and vel_err < self.vel_switch_tol)
 
     def get_control(self, state):
+        '''
+        Computes the acceleration command for the current state.
+        Parameters:
+        state : np.ndarray
+            Current state of the drone, shape (6,).
+        Returns:
+        np.ndarray
+            Acceleration command, shape (3,).
+        '''
         state = np.asarray(state, dtype=float).reshape(6,)
 
         if self.path is None or len(self.path) < 2:
@@ -165,7 +189,7 @@ def run(
     rrt = kino_RRTStar_GRAPH(
         start=start,
         goal=goal,
-        n_iterations=150,
+        n_iterations=500,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 1.0),
         z_limits=(0.1, 1.0),
@@ -197,17 +221,14 @@ def run(
     draw_rrt_tree_3d(rrt.nodes, rrt.parents, PYB_CLIENT, life_time=0.0) # draw RRT TREE in PyBullet
     draw_rrt_path_3d(path, PYB_CLIENT, life_time=0.0)
 
-    logger = Logger(logging_freq_hz=control_freq_hz,
-                    output_folder=output_folder,
-                    colab=colab
-                    ) # logger instance to record simulation data for analysis and plotting
+    # logger = Logger(logging_freq_hz=control_freq_hz,
+    #                 output_folder=output_folder,
+    #                 colab=colab
+    #                 ) # logger instance to record simulation data for analysis and plotting
     
-
-    wp_counter = 0 # waypoint counter
 
 
     #### Run the simulation ####################################
-    action = np.zeros((1, 4))   # (num_drones, 4)
     START = time.time() #used for sim-time to real-time sync 
 
     drone_id = env.DRONE_IDS[0]
@@ -227,13 +248,29 @@ def run(
     for i in range(int(duration_sec * env.CTRL_FREQ)):
 
         obs, reward, terminated, truncated, info = env.step(hover_action)
-        state = obs[0][:6]   # [x,y,z,vx,vy,vz]
+        pos = obs[0][0:3]
+        vel = obs[0][3:6]          # linear velocity
+        state = np.hstack([pos, vel])
+
 
         acc_cmd = kino_ctrl.get_control(state)
 
+        # DEBUG: print diagnostics for controller and path following
+        if kino_ctrl.path is None:
+            target_wp = None
+        else:
+            seg = kino_ctrl.seg
+            target_wp = kino_ctrl.path[seg+1] if (seg+1) < len(kino_ctrl.path) else kino_ctrl.path[-1]
+        pos_err = np.linalg.norm(state[:3] - target_wp[:3]) if target_wp is not None else float("nan")
+        vel_err = np.linalg.norm(state[3:] - target_wp[3:]) if target_wp is not None else float("nan")
+        print(f"step={i}, seg={kino_ctrl.seg}, pos={state[:3]}, target={None if target_wp is None else target_wp[:3]}, pos_err={pos_err:.3f}, vel_err={vel_err:.3f}, acc_norm={np.linalg.norm(acc_cmd):.3f}")
+
         # simple mass model (works)
-        mass = p.getDynamicsInfo(drone_id, -1)[0]   # base link mass
         force = mass * np.asarray(acc_cmd)
+
+        # safety clamp (optional): avoid insane forces
+        max_force = 50.0 * mass
+        force = np.clip(force, -max_force, max_force)
 
         p.applyExternalForce(
             objectUniqueId=drone_id,
@@ -257,7 +294,7 @@ def run(
     #     logger.plot()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Helix flight script using CtrlAviary and DSLPIDControl')
+    parser = argparse.ArgumentParser(description='Kino-RRT* flight script using CtrlAviary and KinoTrajectoryController')
     parser.add_argument('--drone',              default=DEFAULT_DRONES,     type=DroneModel,    metavar='', choices=DroneModel)
     parser.add_argument('--num_drones',         default=DEFAULT_NUM_DRONES, type=int,           metavar='')
     parser.add_argument('--physics',            default=DEFAULT_PHYSICS,    type=Physics,       metavar='', choices=Physics)
@@ -267,10 +304,6 @@ if __name__ == "__main__":
     parser.add_argument('--user_debug_gui',     default=DEFAULT_USER_DEBUG_GUI, type=str2bool,  metavar='')
     parser.add_argument('--obstacles',          default=DEFAULT_OBSTACLES,  type=str2bool,      metavar='')
     parser.add_argument('--simulation_freq_hz', default=DEFAULT_SIMULATION_FREQ_HZ, type=int,   metavar='')
-    parser.add_argument('--control_freq_hz',    default=DEFAULT_CONTROL_FREQ_HZ,  type=int,     metavar='')
-    parser.add_argument('--duration_sec',       default=DEFAULT_DURATION_SEC,     type=int,     metavar='')
-    parser.add_argument('--output_folder',      default=DEFAULT_OUTPUT_FOLDER,    type=str,     metavar='')
-    parser.add_argument('--colab',              default=DEFAULT_COLAB,            type=bool,    metavar='')
+    parser.add_argument('--control_freq_hz',    default=DEFAULT_CONTROL_FREQ_HZ,  type=int,     metavar='') 
     ARGS = parser.parse_args()
-
     run(**vars(ARGS))

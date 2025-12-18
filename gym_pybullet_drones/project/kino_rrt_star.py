@@ -130,13 +130,14 @@ class kino_RRTStar_GRAPH:
         -------
         None
         """
-        q_new = self.nodes[q_new_index] 
+        xi = self.nodes[q_new_index] 
         r = self.neighbor_radius
 
         for i in range(len(self.nodes)):
             if i == q_new_index:
                 continue
-            c = cost_optimal(q_new, self.nodes[i])[0] # cost from new node until i node
+
+            c = cost_optimal(xi, self.nodes[i])[0] # cost from new node until i node
 
             if  c >= r:
                 continue
@@ -171,7 +172,7 @@ class kino_RRTStar_GRAPH:
             self.goal
         )
 
-        self.goal_index = len(self.nodes)
+        self.goal_index = len(self.nodes) # Index of the goal node
         self.nodes.append(self.goal.copy())
         self.parents.append(self.best_goal_parent)
         self.costs.append(self.costs[self.best_goal_parent] + c_edge)
