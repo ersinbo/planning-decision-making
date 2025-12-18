@@ -1,6 +1,3 @@
-print("=== RUNNING PID_RRT_star.py (edited version) ===")
-print("=== entered run() ===")
-
 from RRT_star import RRTStar_GRAPH, draw_rrt_tree_3d, draw_rrt_path_3d
 
 import os
@@ -85,7 +82,7 @@ def run(
     rrt = RRTStar_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=150,
+        n_iterations=15000,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 1.0),
@@ -100,18 +97,17 @@ def run(
     print("num nodes:", len(rrt.nodes))
     print("goal index:", rrt.goal_index)
 
-    path = rrt.extract_path() # extract path from RRT graph
-    print("path length:", None if path is None else len(path))
+    path = rrt.extract_path()
+    if (not success) or (path is None):
+        raise RuntimeError("RRT did not reach the goal (try more iterations / bigger step_size / different goal)")
 
-    NUM_WP = len(path) # number of waypoints for the drone to follow
-    TARGET_POS = np.zeros((NUM_WP, 3), dtype=float) # Target_POS stores the waypoints for the RRT path.
+    print("path length:", len(path))
 
-    for k, pt in enumerate(path): # convert RRT path to TARGET_POS waypoints which the drone will follow
+    NUM_WP = len(path)
+    TARGET_POS = np.zeros((NUM_WP, 3), dtype=float)
+    for k, pt in enumerate(path):
         TARGET_POS[k, :] = pt
 
-
-    if not success or path is None:
-        raise RuntimeError("RRT did not reach the goal (try more iterations / bigger step_size / different goal)")
 
 
     draw_rrt_tree_3d(rrt.nodes, rrt.parents, PYB_CLIENT, life_time=0.0) # draw RRT TREE in PyBullet
