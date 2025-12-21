@@ -957,30 +957,47 @@ class BaseAviary(gym.Env):
     
     ################################################################################
 
+    def getObstacleIds(self):
+        return getattr(self, "OBSTACLE_IDS", [])
+
     def _addObstacles(self):
         """Add obstacles to the environment.
 
         These obstacles are loaded from standard URDF files included in Bullet.
 
         """
+        self.OBSTACLE_IDS = []
+        self.OBSTACLE_IDS.append(
         p.loadURDF("samurai.urdf",
                    physicsClientId=self.CLIENT
-                   )
+                   ))
+        self.OBSTACLE_IDS.append(
         p.loadURDF("duck_vhacd.urdf",
                    [-.5, -.5, .05],
                    p.getQuaternionFromEuler([0, 0, 0]),
                    physicsClientId=self.CLIENT
-                   )
+                   ))
+        self.OBSTACLE_IDS.append(
         p.loadURDF("cube_no_rotation.urdf",
                    [-.5, -2.5, .5],
                    p.getQuaternionFromEuler([0, 0, 0]),
                    physicsClientId=self.CLIENT
-                   )
+                   ))
+        self.OBSTACLE_IDS.append(
         p.loadURDF("sphere2.urdf",
                    [0, 2, .5],
                    p.getQuaternionFromEuler([0,0,0]),
                    physicsClientId=self.CLIENT
-                   )
+                   ))
+        p.setAdditionalSearchPath(
+            pkg_resources.resource_filename("gym_pybullet_drones", "assets"))
+        self.BOX_ID = p.loadURDF(
+            "box.urdf",
+            [0.5, -0.5, 0.6],
+            p.getQuaternionFromEuler([0, 0, 0]),
+            useFixedBase=True,
+            physicsClientId=self.CLIENT
+            )
     
     ################################################################################
     

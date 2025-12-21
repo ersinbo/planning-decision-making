@@ -1,2 +1,7 @@
 results/
-gym_pybullet_drones/project/__pycache__/
+gym_pybullet_drones/project/__pycache__/.vscode/
+
+__pycache__/
+*.pyc
+
+.vscode/

@@ -33,7 +33,7 @@ DEFAULT_SIMULATION_FREQ_HZ = 240 # simulation frequency for the PyBullet physics
 why are the simulation and control frequencies different?
 The simulation frequency (SIMULATION_FREQ_HZ) refers to how often the physics engine updates the state of the simulation, while the control frequency (CONTROL_FREQ_HZ) refers to how often the control inputs are computed and applied to the drones.'''
 DEFAULT_CONTROL_FREQ_HZ = 48 # control frequency for the PID controller
-DEFAULT_DURATION_SEC = 12  # duration of the simulation in seconds
+DEFAULT_DURATION_SEC = 50  # duration of the simulation in seconds
 DEFAULT_OUTPUT_FOLDER = 'results'
 DEFAULT_COLAB = False
 
@@ -74,23 +74,31 @@ def run(
                         )
 
     #### Obtain the PyBullet Client ID from the environment ####
-    PYB_CLIENT = env.getPyBulletClient() 
+    PYB_CLIENT = env.getPyBulletClient()
+
+    OBSTACLE_IDS = env.getObstacleIds() # get the unique IDs assigned to each obstacle in the simulation
+    DRONE_IDS = env.getDroneIds() # get the unique IDs assigned to each drone in the simulation 
 
     # ---------- build and draw RRT tree here ----------
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
-    goal  = np.array([0.5, 0.8, 0.6], dtype=float) # choose any goal in your workspace
+    goal  = np.array([-0.0, 4.0, 0.8], dtype=float) # choose any goal in your workspace
+
+    print("Obstacle IDs:", env.getObstacleIds())
+    print("Box loaded:", hasattr(env, "BOX_ID"))
 
     rrt = RRT_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=1500,
-        step_size=0.15,
-        x_limits=(-1.0, 1.0),
-        y_limits=(-1.0, 1.0),
+        n_iterations=15000,
+        step_size=0.2,
+        x_limits=(-10.0, 10.0),
+        y_limits=(-10.0, 10.0),
         z_limits=(0.1, 1.0),        
-        goal_sample_rate=0.1,
-        goal_threshold=0.08, 
-        rebuild_kdtree_every=50
+        goal_sample_rate=0.2,
+        goal_threshold=0.25, 
+        rebuild_kdtree_every=50,
+        pyb_client=PYB_CLIENT,
+        obstacle_ids=OBSTACLE_IDS
     )
 
     success = rrt.build()
