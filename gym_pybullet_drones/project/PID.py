@@ -1,5 +1,6 @@
 
-from RRT_new import RRT_GRAPH, draw_rrt_tree_3d, draw_rrt_path_3d
+from RRT_new import RRT_GRAPH
+from kino_rrt_star import draw_rrt_tree_3d, draw_rrt_path_3d
 
 import os
 import time
@@ -33,7 +34,7 @@ DEFAULT_SIMULATION_FREQ_HZ = 240 # simulation frequency for the PyBullet physics
 why are the simulation and control frequencies different?
 The simulation frequency (SIMULATION_FREQ_HZ) refers to how often the physics engine updates the state of the simulation, while the control frequency (CONTROL_FREQ_HZ) refers to how often the control inputs are computed and applied to the drones.'''
 DEFAULT_CONTROL_FREQ_HZ = 48 # control frequency for the PID controller
-DEFAULT_DURATION_SEC = 12  # duration of the simulation in seconds
+DEFAULT_DURATION_SEC = 50  # duration of the simulation in seconds
 DEFAULT_OUTPUT_FOLDER = 'results'
 DEFAULT_COLAB = False
 
@@ -74,35 +75,41 @@ def run(
                         )
 
     #### Obtain the PyBullet Client ID from the environment ####
-    PYB_CLIENT = env.getPyBulletClient() 
+    PYB_CLIENT = env.getPyBulletClient()
+    
+    OBSTACLE_IDS = env.getObstacleIds() # get the unique IDs assigned to each obstacle in the simulation
+    DRONE_IDS = env.getDroneIds() # get the unique IDs assigned to each drone in the simulation  
 
     # ---------- build and draw RRT tree here ----------
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
-    goal  = np.array([0.5, 0.8, 0.6], dtype=float) # choose any goal in your workspace
+    goal  = np.array([-4.0, 4.0, 0.6], dtype=float) # choose any goal in your workspace
 
     rrt = RRT_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=1500,
+        n_iterations=20000,
         step_size=0.15,
-        x_limits=(-1.0, 1.0),
-        y_limits=(-1.0, 1.0),
+        x_limits=(-10.0, 10.0),
+        y_limits=(-10.0, 10.0),
         z_limits=(0.1, 1.0),        
-        goal_sample_rate=0.01,
-        goal_threshold=0.08
+        goal_sample_rate=0.2,
+        goal_threshold=0.15,
+        rebuild_kdtree_every=50,
+        pyb_client=PYB_CLIENT,
+        obstacle_ids=OBSTACLE_IDS
     ) # create RRT graph instance
 
     success = rrt.build() # build RRT graph
     path = rrt.extract_path() # extract path from RRT graph
+
+    if not success or path is None:
+        raise RuntimeError("RRT did not reach the goal (try more iterations / bigger step_size / different goal)")
+
     NUM_WP = len(path) # number of waypoints for the drone to follow
     TARGET_POS = np.zeros((NUM_WP, 3), dtype=float) # Target_POS stores the waypoints for the RRT path.
 
     for k, pt in enumerate(path): # convert RRT path to TARGET_POS waypoints which the drone will follow
         TARGET_POS[k, :] = pt
-
-
-    if not success or path is None:
-        raise RuntimeError("RRT did not reach the goal (try more iterations / bigger step_size / different goal)")
 
 
     draw_rrt_tree_3d(rrt.nodes, rrt.parents, PYB_CLIENT, life_time=0.0) # draw RRT TREE in PyBullet
@@ -136,7 +143,7 @@ def run(
             target_pos=TARGET_POS[wp_counter],
             target_rpy=INIT_RPYS[0, :]
         )
-        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.0 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
+        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.05 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
             wp_counter += 1
 
         logger.log(

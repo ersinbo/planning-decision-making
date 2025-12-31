@@ -12,7 +12,7 @@ class KinoRRTStar:
                  goal_sample_rate=0.05,
                  neighbor_radius=0.5,
                  goal_radius=0.5,
-                 tmin=0.05, tmax=3.0, n_grid=30):
+                 tmin=0.05, tmax=3.0, n_grid=30,pyb_client=None, obstacle_ids=None, collision_radius=0.08):
 
         self.start = np.asarray(start, dtype=float).reshape(6,)
         self.goal  = np.asarray(goal,  dtype=float).reshape(6,)
@@ -37,6 +37,10 @@ class KinoRRTStar:
         self.goal_parent = None
         self.goal_cost = float("inf")
         self.goal_edge = None
+
+        self.pyb_client = pyb_client
+        self.obstacle_ids = obstacle_ids or []
+        self.collision_radius = float(collision_radius)
 
     def sample(self):
         if random.random() < self.goal_sample_rate:
@@ -74,6 +78,8 @@ class KinoRRTStar:
             edge = connect_star(self.nodes[i], x_i,
                                 tmin=self.tmin, tmax=self.tmax, n_grid=self.n_grid,
                                 n_samples=10)
+            if not self.edge_collision_free(edge):
+                continue
             total = self.costs[i] + edge["cost"]
             if total < best_total:
                 best_total = total
@@ -95,6 +101,8 @@ class KinoRRTStar:
             edge = connect_star(x_new, x,
                                 tmin=self.tmin, tmax=self.tmax, n_grid=self.n_grid,
                                 n_samples=10)
+            if not self.edge_collision_free(edge):
+                continue
             candidate = self.costs[new_index] + edge["cost"]
             if candidate < self.costs[i]:
                 self.parents[i] = new_index
@@ -110,11 +118,38 @@ class KinoRRTStar:
         edge = connect_star(x_new, self.goal,
                             tmin=self.tmin, tmax=self.tmax, n_grid=self.n_grid,
                             n_samples=20)
+        if not self.edge_collision_free(edge):
+            return
         total = self.costs[new_index] + edge["cost"]
         if total < self.goal_cost:
             self.goal_cost = total
             self.goal_parent = new_index
             self.goal_edge = edge
+
+    def edge_collision_free(self, edge):
+        if (self.pyb_client is None) or (not self.obstacle_ids):
+            return True
+
+        xs = edge["xs"]  # shape (N, 6), positions are xs[:,0:3]
+        r = self.collision_radius
+        offsets = [
+            np.array([0, 0, 0]),
+            np.array([ r, 0, 0]),
+            np.array([-r, 0, 0]),
+            np.array([0,  r, 0]),
+            np.array([0, -r, 0]),
+        ]
+        for k in range(len(xs) - 1):
+            p0 = xs[k, 0:3]
+            p1 = xs[k + 1, 0:3]
+            for off in offsets:
+                hit_id = p.rayTest((p0 + off).tolist(), (p1 + off).tolist(),
+                                   physicsClientId=self.pyb_client)[0][0]
+                if hit_id in self.obstacle_ids:
+                    return False
+        return True
+
+            
 
     def build(self):
         for _ in range(self.n_iterations):
