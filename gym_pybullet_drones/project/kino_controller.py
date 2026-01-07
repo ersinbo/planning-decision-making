@@ -17,13 +17,13 @@ DEFAULT_DRONES = DroneModel("cf2x")
 DEFAULT_NUM_DRONES = 1
 DEFAULT_PHYSICS = Physics("pyb")
 DEFAULT_GUI = True
-DEFAULT_RECORD_VISION = False
+DEFAULT_RECORD_VISION = True
 DEFAULT_PLOT = True
 DEFAULT_USER_DEBUG_GUI = False
 DEFAULT_OBSTACLES = True
 DEFAULT_SIMULATION_FREQ_HZ = 240
 DEFAULT_CONTROL_FREQ_HZ = 48
-DEFAULT_DURATION_SEC = 12
+DEFAULT_DURATION_SEC = 20
 DEFAULT_OUTPUT_FOLDER = "results"
 DEFAULT_COLAB = False
 
@@ -42,7 +42,7 @@ def run(
     output_folder=DEFAULT_OUTPUT_FOLDER,
     colab=DEFAULT_COLAB,
 ):
-    INIT_XYZS = np.array([[0.0, 0.0, 0.1]])
+    INIT_XYZS = np.array([[-1.0, -1.0, 0.1]])
     INIT_RPYS = np.array([[0.0, 0.0, 0.0]])
 
     env = CtrlAviary(
@@ -60,23 +60,22 @@ def run(
         user_debug_gui=user_debug_gui,
     )
     PYB_CLIENT = env.getPyBulletClient()
-
-    # --- Plan in double-integrator state space ---
+    OBSTACLE_IDS = getattr(env, "OBSTACLE_IDS", [])    # --- Plan in double-integrator state space ---
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2], 0, 0, 0], dtype=float)
-    goal  = np.array([5.0, 4.0, 0.6, 0, 0, 0], dtype=float)
+    goal  = np.array([1.0, 0.5, 0.6, 0, 0, 0], dtype=float)
 
     rrt = KinoRRTStar(
         start=start,
         goal=goal,
-        n_iterations=3000,
-        x_limits=(-10.0, 10.0),
-        y_limits=(-10.0, 10.0),
+        n_iterations=1000,
+        x_limits=(-1.0, 1.0),
+        y_limits=(-1.0, 1.0),
         z_limits=(0.1, 1.0),
         vx_limits=(-1.0, 1.0),
         vy_limits=(-1.0, 1.0),
         vz_limits=(-1.0, 1.0),
-        goal_sample_rate=0.20,
-        neighbor_radius=50.0,     # cost-space neighbor radius
+        goal_sample_rate=0.10,
+        neighbor_radius=3.0,     # cost-space neighbor radius
         goal_radius=2,
         tmin=0.1,
         tmax=2.0,
