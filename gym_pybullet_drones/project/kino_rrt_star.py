@@ -58,8 +58,13 @@ class KinoRRTStar:
         return c, tau
 
     def near_set(self, x_new):
+        p_new = x_new[0:3]
+        dpos_max = 0.8  # same idea as in rewire_from; tune
+
         idxs = []
         for i, x in enumerate(self.nodes):
+            if np.linalg.norm(x[0:3] - p_new) > dpos_max:
+                continue
             c, _ = self.c_star(x, x_new)
             if c < self.r:
                 idxs.append(i)
@@ -90,24 +95,34 @@ class KinoRRTStar:
 
     def rewire_from(self, new_index):
         x_new = self.nodes[new_index]
+        p_new = x_new[0:3]
+
+        dpos_max = 0.3   # tune
 
         for i, x in enumerate(self.nodes):
             if i == new_index:
                 continue
+
+            # cheap prefilter
+            if np.linalg.norm(x[0:3] - p_new) > dpos_max:
+                continue
+
+
+            # expensive kinodynamic test only on survivors
             c, _ = self.c_star(x_new, x)
             if c >= self.r:
                 continue
 
-            edge = connect_star(x_new, x,
-                                tmin=self.tmin, tmax=self.tmax, n_grid=self.n_grid,
-                                n_samples=10)
+            edge = connect_star(x_new, x, tmin=self.tmin, tmax=self.tmax, n_grid=self.n_grid, n_samples=10)
             if not self.edge_collision_free(edge):
                 continue
+
             candidate = self.costs[new_index] + edge["cost"]
             if candidate < self.costs[i]:
                 self.parents[i] = new_index
                 self.costs[i] = candidate
                 self.edge[i] = edge
+
 
     def try_update_goal(self, new_index):
         x_new = self.nodes[new_index]

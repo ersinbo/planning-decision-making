@@ -4,7 +4,7 @@ print("=== RUNNING kino_controller.py (Kinodynamic RRT* + PID tracking) ===")
 import time
 import argparse
 import numpy as np
-
+import pybullet as p
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary
 from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
@@ -18,14 +18,14 @@ DEFAULT_NUM_DRONES = 1
 DEFAULT_PHYSICS = Physics("pyb")
 DEFAULT_GUI = True
 DEFAULT_RECORD_VISION = True
-DEFAULT_PLOT = True
+DEFAULT_PLOT = False
 DEFAULT_USER_DEBUG_GUI = False
 DEFAULT_OBSTACLES = True
 DEFAULT_SIMULATION_FREQ_HZ = 240
 DEFAULT_CONTROL_FREQ_HZ = 48
 DEFAULT_DURATION_SEC = 20
 DEFAULT_OUTPUT_FOLDER = "results"
-DEFAULT_COLAB = False
+DEFAULT_COLAB = True
 
 def run(
     drone=DEFAULT_DRONES,
@@ -51,7 +51,7 @@ def run(
         initial_xyzs=INIT_XYZS,
         initial_rpys=INIT_RPYS,
         physics=physics,
-        neighbourhood_radius=10,
+        neighbourhood_radius=1,
         pyb_freq=simulation_freq_hz,
         ctrl_freq=control_freq_hz,
         gui=gui,
@@ -59,33 +59,36 @@ def run(
         obstacles=obstacles,
         user_debug_gui=user_debug_gui,
     )
+    cid = env.getPyBulletClient()
+    p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0, physicsClientId=cid)
+
     PYB_CLIENT = env.getPyBulletClient()
     OBSTACLE_IDS = getattr(env, "OBSTACLE_IDS", [])    # --- Plan in double-integrator state space ---
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2], 0, 0, 0], dtype=float)
-    goal  = np.array([1.0, 0.5, 0.6, 0, 0, 0], dtype=float)
+    goal  = np.array([0.9, 0.5, 0.6, 0, 0, 0], dtype=float)
 
     rrt = KinoRRTStar(
         start=start,
         goal=goal,
-        n_iterations=1000,
+        n_iterations=5000,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 1.0),
         z_limits=(0.1, 1.0),
         vx_limits=(-1.0, 1.0),
         vy_limits=(-1.0, 1.0),
         vz_limits=(-1.0, 1.0),
-        goal_sample_rate=0.10,
-        neighbor_radius=3.0,     # cost-space neighbor radius
-        goal_radius=2,
+        goal_sample_rate=0.1,
+        neighbor_radius=2.0,     # cost-space neighbor radius
+        goal_radius=5,
         tmin=0.1,
         tmax=2.0,
-        n_grid=25, pyb_client=PYB_CLIENT, obstacle_ids=OBSTACLE_IDS, collision_radius=0.08
+        n_grid=10, pyb_client=PYB_CLIENT, obstacle_ids=OBSTACLE_IDS, collision_radius=0.06
     )
 
     success = rrt.build()
-    traj = rrt.extract_trajectory_samples(samples_per_edge=35)
+    traj = rrt.extract_trajectory_samples(samples_per_edge=20)
 
-    if (not success) or (traj is None) or (len(traj) < 2):
+    if (not success) or (traj is None) or (len(traj) < 1):
         env.close()
         raise RuntimeError("No goal connection found; increase iterations/radius/time bounds")
 
