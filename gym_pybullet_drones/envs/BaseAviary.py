@@ -12,6 +12,7 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 import gymnasium as gym
+from pathlib import Path
 from gym_pybullet_drones.utils.enums import DroneModel, Physics, ImageType
 
 
@@ -485,12 +486,16 @@ class BaseAviary(gym.Env):
         #### Load ground plane, drone and obstacles models #########
         self.PLANE_ID = p.loadURDF("plane.urdf", physicsClientId=self.CLIENT)
 
-        self.DRONE_IDS = np.array([p.loadURDF(pkg_resources.resource_filename('gym_pybullet_drones', 'assets/'+self.URDF),
-                                              self.INIT_XYZS[i,:],
-                                              p.getQuaternionFromEuler(self.INIT_RPYS[i,:]),
-                                              flags = p.URDF_USE_INERTIA_FROM_FILE,
-                                              physicsClientId=self.CLIENT
-                                              ) for i in range(self.NUM_DRONES)])
+        assets_dir = Path(__file__).resolve().parents[1] / "assets"
+        urdf_path = assets_dir / self.URDF
+
+        self.DRONE_IDS = np.array([p.loadURDF(
+            str(urdf_path),
+            self.INIT_XYZS[i, :],
+            p.getQuaternionFromEuler(self.INIT_RPYS[i, :]),
+            flags=p.URDF_USE_INERTIA_FROM_FILE,
+            physicsClientId=self.CLIENT
+        ) for i in range(self.NUM_DRONES)])
         #### Remove default damping #################################
         # for i in range(self.NUM_DRONES):
         #     p.changeDynamics(self.DRONE_IDS[i], -1, linearDamping=0, angularDamping=0)
@@ -957,31 +962,46 @@ class BaseAviary(gym.Env):
     
     ################################################################################
 
+    def getObstacleIds(self):
+        return getattr(self, "OBSTACLE_IDS", [])
+
     def _addObstacles(self):
         """Add obstacles to the environment.
 
         These obstacles are loaded from standard URDF files included in Bullet.
 
         """
-        p.loadURDF("samurai.urdf",
-                   physicsClientId=self.CLIENT
-                   )
+        self.OBSTACLE_IDS = []
+
+        self.OBSTACLE_IDS.append(
         p.loadURDF("duck_vhacd.urdf",
                    [-.5, -.5, .05],
                    p.getQuaternionFromEuler([0, 0, 0]),
                    physicsClientId=self.CLIENT
-                   )
-        p.loadURDF("cube_no_rotation.urdf",
-                   [-.5, -2.5, .5],
-                   p.getQuaternionFromEuler([0, 0, 0]),
-                   physicsClientId=self.CLIENT
-                   )
-        p.loadURDF("sphere2.urdf",
-                   [0, 2, .5],
-                   p.getQuaternionFromEuler([0,0,0]),
-                   physicsClientId=self.CLIENT
-                   )
+                   ))
+        # self.OBSTACLE_IDS.append(
+        # p.loadURDF("cube_no_rotation.urdf",
+        #            [-.5, -2.5, .5],
+        #            p.getQuaternionFromEuler([0, 0, 0]),
+        #            physicsClientId=self.CLIENT
+        #            ))
+        # self.OBSTACLE_IDS.append(
+        # p.loadURDF("sphere2.urdf",
+        #            [0, 2, .5],
+        #            p.getQuaternionFromEuler([0,0,0]),
+        #            physicsClientId=self.CLIENT
+        #            ))
+
+        p.setAdditionalSearchPath(str(Path(__file__).resolve().parents[1] / "assets"))
+
     
+
+        wall_path = str(Path(__file__).resolve().parents[1] / "assets" / "wall.urdf")
+        wall_id = p.loadURDF(wall_path, useFixedBase=True, physicsClientId=self.CLIENT)
+
+
+        self.OBSTACLE_IDS.append(wall_id)
+
     ################################################################################
     
     def _parseURDFParameters(self):
@@ -991,7 +1011,10 @@ class BaseAviary(gym.Env):
         files in folder `assets/`.
 
         """
-        URDF_TREE = etxml.parse(pkg_resources.resource_filename('gym_pybullet_drones', 'assets/'+self.URDF)).getroot()
+        from pathlib import Path
+        assets_dir = Path(__file__).resolve().parents[1] / "assets"
+        urdf_path = assets_dir / self.URDF
+        URDF_TREE = etxml.parse(str(urdf_path)).getroot()        
         M = float(URDF_TREE[1][0][1].attrib['value'])
         L = float(URDF_TREE[0].attrib['arm'])
         THRUST2WEIGHT_RATIO = float(URDF_TREE[0].attrib['thrust2weight'])

@@ -1,3 +1,4 @@
+from tracemalloc import start
 import numpy as np
 import random
 import pybullet as p

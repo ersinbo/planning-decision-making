@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<robot name="wall_with_hole">
+
+  <!-- Root link (empty) -->
+  <link name="base"/>
+
+  <!-- Left slab -->
+  <link name="left">
+    <visual>
+      <origin xyz="-1.15 0 0.8" rpy="0 0 0"/>
+      <geometry><box size="1.15 0.1 1.6"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="-1.15 0 0.8" rpy="0 0 0"/>
+      <geometry><box size="1.15 0.1 1.6"/></geometry>
+    </collision>
+  </link>
+
+  <!-- Right slab -->
+  <link name="right">
+    <visual>
+      <origin xyz="1.15 0 0.8" rpy="0 0 0"/>
+      <geometry><box size="1.15 0.1 1.6"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="1.15 0 0.8" rpy="0 0 0"/>
+      <geometry><box size="1.15 0.1 1.6"/></geometry>
+    </collision>
+  </link>
+
+  <!-- Top lintel above the hole -->
+  <link name="top">
+    <visual>
+      <origin xyz="0 0 1.35" rpy="0 0 0"/>
+      <geometry><box size="1.3 0.1 0.5"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 1.35" rpy="0 0 0"/>
+      <geometry><box size="1.3 0.1 0.5"/></geometry>
+    </collision>
+  </link>
+
+  <link name="bottom">
+    <visual>
+      <origin xyz="0 0 0.35" rpy="0 0 0"/>
+      <geometry><box size="1.3 0.1 0.7"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.35" rpy="0 0 0"/>
+      <geometry><box size="1.3 0.1 0.7"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="left_fixed" type="fixed">
+    <parent link="base"/>
+    <child link="left"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <joint name="right_fixed" type="fixed">
+    <parent link="base"/>
+    <child link="right"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <joint name="top_fixed" type="fixed">
+    <parent link="base"/>
+    <child link="top"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <joint name="bottom_fixed" type="fixed">
+    <parent link="base"/>
+    <child link="bottom"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+</robot>

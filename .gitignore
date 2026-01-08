@@ -1,2 +1,5 @@
 results/
 gym_pybullet_drones/project/__pycache__/
+__pycache__/
+*.pyc
+.venv/
