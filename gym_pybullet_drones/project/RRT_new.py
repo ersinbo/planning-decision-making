@@ -133,7 +133,7 @@ class RRT_GRAPH:
         
         return True
 
-    def add_node_edge(self, q_new, parent_idx):
+    def add_node_edge(self, q_new, parent_index):
         """
         Add new node, q_new,  and parent index to the tree
         q_new is the new node position (in the direction of q_rand) if q_rand is farther than step size from q_near
@@ -171,8 +171,8 @@ class RRT_GRAPH:
         """Build RRT graph"""
         for _ in range(self.n_iterations):
             q_rand = self.sample()
-            idx_near = self.nearest_kdtree(q_rand)
-            q_near = self.nodes[idx_near]
+            index_near = self.nearest_kdtree(q_rand)
+            q_near = self.nodes[index_near]
             q_new = self.steer_step_size(q_near, q_rand)
 
             #collision check

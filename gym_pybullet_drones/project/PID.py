@@ -84,29 +84,29 @@ def run(
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
     goal  = np.array([-4.0, 4.0, 0.6], dtype=float) # choose any goal in your workspace
 
-    rrt = RRT_GRAPH( 
+    rrt = RRT_GRAPH(
         start=start,
         goal=goal,
         n_iterations=20000,
         step_size=0.15,
         x_limits=(-10.0, 10.0),
         y_limits=(-10.0, 10.0),
-        z_limits=(0.1, 1.0),        
-        goal_sample_rate=0.2,
-        goal_threshold=0.15,
+        z_limits=(0.1, 1.0),
+        goal_sample_rate=0.1,
+        goal_threshold=0.08,
         rebuild_kdtree_every=50,
         pyb_client=PYB_CLIENT,
         obstacle_ids=OBSTACLE_IDS
     ) # create RRT graph instance
-
-    success = rrt.build() # build RRT graph
-    path = rrt.extract_path() # extract path from RRT graph
+    
+    success = rrt.build()
+    path = rrt.extract_path()
 
     if not success or path is None:
         raise RuntimeError("RRT did not reach the goal (try more iterations / bigger step_size / different goal)")
 
-    NUM_WP = len(path) # number of waypoints for the drone to follow
-    TARGET_POS = np.zeros((NUM_WP, 3), dtype=float) # Target_POS stores the waypoints for the RRT path.
+    TARGET_POS = np.array(path, dtype=float)
+    NUM_WP = len(TARGET_POS)
 
     for k, pt in enumerate(path): # convert RRT path to TARGET_POS waypoints which the drone will follow
         TARGET_POS[k, :] = pt
@@ -123,7 +123,7 @@ def run(
                     ) # logger instance to record simulation data for analysis and plotting
     
 
-    wp_counter = 0 # waypoint counter
+    wp_counter = np.zeros(num_drones, dtype=int)# waypoint counter
     ctrl = DSLPIDControl(drone_model=drone) # create a list of PID controllers, one per drone
 
 
@@ -143,7 +143,7 @@ def run(
             target_pos=TARGET_POS[wp_counter],
             target_rpy=INIT_RPYS[0, :]
         )
-        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.05 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
+        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.0 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
             wp_counter += 1
 
         logger.log(
