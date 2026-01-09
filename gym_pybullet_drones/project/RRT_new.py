@@ -139,7 +139,7 @@ class RRT_GRAPH:
         q_new is the new node position (in the direction of q_rand) if q_rand is farther than step size from q_near
         """
         self.nodes.append(q_new)
-        self.parents.append(parent_index)
+        self.parents.append(parent_idx)
         new_index = len(self.nodes) - 1  # return index of new node
 
         self._recent_indices.append(new_index) # track recently added nodes for KDTree updates
@@ -179,7 +179,7 @@ class RRT_GRAPH:
             if not self.collision_check(q_near, q_new):
                 continue
 
-            new_index = self.add_node_edge(q_new, index_near)
+            new_index = self.add_node_edge(q_new, idx_near)
             self._rebuild_kdtree_if_needed()
 
             if self.stop_condition(q_new):
