@@ -1,5 +1,6 @@
 
-from RRT_new import RRT_GRAPH, draw_rrt_tree_3d, draw_rrt_path_3d
+from RRT_new import RRT_GRAPH
+from kino_rrt_star import draw_rrt_tree_3d, draw_rrt_path_3d
 
 import os
 import time
@@ -75,90 +76,47 @@ def run(
 
     #### Obtain the PyBullet Client ID from the environment ####
     PYB_CLIENT = env.getPyBulletClient()
-
+    
     OBSTACLE_IDS = env.getObstacleIds() # get the unique IDs assigned to each obstacle in the simulation
-    DRONE_IDS = env.getDroneIds() # get the unique IDs assigned to each drone in the simulation 
+    DRONE_IDS = env.getDroneIds() # get the unique IDs assigned to each drone in the simulation  
 
     # ---------- build and draw RRT tree here ----------
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
-    goal  = np.array([-0.0, 4.0, 0.8], dtype=float) # choose any goal in your workspace
-
-    print("Obstacle IDs:", env.getObstacleIds())
-    print("Box loaded:", hasattr(env, "BOX_ID"))
+    goal  = np.array([-4.0, 4.0, 0.6], dtype=float) # choose any goal in your workspace
 
     rrt = RRT_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=15000,
-        step_size=0.2,
+        n_iterations=20000,
+        step_size=0.15,
         x_limits=(-10.0, 10.0),
         y_limits=(-10.0, 10.0),
         z_limits=(0.1, 1.0),        
         goal_sample_rate=0.2,
-        goal_threshold=0.25, 
+        goal_threshold=0.15,
         rebuild_kdtree_every=50,
         pyb_client=PYB_CLIENT,
         obstacle_ids=OBSTACLE_IDS
-    )
+    ) # create RRT graph instance
 
-    success = rrt.build()
-    path = rrt.extract_path()
+    success = rrt.build() # build RRT graph
+    path = rrt.extract_path() # extract path from RRT graph
 
     if not success or path is None:
         raise RuntimeError("RRT did not reach the goal (try more iterations / bigger step_size / different goal)")
-    TARGET_POS = np.array(path, dtype=float)
-    NUM_WP = len(TARGET_POS)
 
-    # for k, pt in enumerate(path):
-    #     TARGET_POS[k, :] = pt
+    NUM_WP = len(path) # number of waypoints for the drone to follow
+    TARGET_POS = np.zeros((NUM_WP, 3), dtype=float) # Target_POS stores the waypoints for the RRT path.
 
-    # ---------- convert RRT path to PID waypoints ----------
-    # NUM_WP = len(path)
-    # TARGET_POS = np.zeros((NUM_WP, 3), dtype=float)
+    for k, pt in enumerate(path): # convert RRT path to TARGET_POS waypoints which the drone will follow
+        TARGET_POS[k, :] = pt
 
-    # z_const = INIT_XYZS[0, 2]  # keep altitude constant
-    # for k, pt in enumerate(path):
-    #     TARGET_POS[k, 0] = pt[0]
-    #     TARGET_POS[k, 1] = pt[1]
-    #     TARGET_POS[k, 2] = z_const
 
-    # ---------- DRAW RRT TREE + PATH ----------
-    draw_rrt_tree_3d(rrt.nodes, rrt.parents, PYB_CLIENT, life_time=0.0)
-    draw_rrt_path_3d(path, PYB_CLIENT, life_time=0.0)
+    draw_rrt_tree_3d(rrt.nodes, rrt.parents, PYB_CLIENT, life_time=0.0) # draw RRT TREE in PyBullet
+    draw_rrt_path_3d(path, PYB_CLIENT, life_time=0.0) # draw RRT PATH in PyBullet
 
-    # ------------------------------------------------------
 
-    wp_counters = np.zeros(num_drones, dtype=int)
 
-    # 2D RRT in (x, y) using the first drone's start position
-        #     start = [INIT_XYZS[0, 0], INIT_XYZS[0, 1]]
-        #     goal  = [0.5, 0.8]   # choose any goal in your workspace
-
-        #     nodes, goal_idx = rrt_build_tree(
-        #         start=start,
-        #         goal=goal,
-        #         n_iterations=500,
-        #         step_size=0.1,
-        #         x_limits=(-1.0, 1.0),
-        #         y_limits=(-1.0, 1.0)
-        # )
-        #     spawn_tiny_sphere(goal[0], goal[1], z=0.1)
-        #     draw_rrt_tree(nodes, PYB_CLIENT, line_width=1.0, life_time=0.0)
-        #     path = extract_path(nodes, goal_index=goal_idx)
-        #     draw_rrt_path(path, PYB_CLIENT, line_width=2.0, life_time=0.0)
-
-        #     end = path[-1]
-    
-        #     NUM_WP = len(path)
-        #     TARGET_POS = np.zeros((NUM_WP,3)) # Target_POS stores the waypoints for the circular trajectory.
-
-        #     for k, pt in enumerate(path):
-        #         TARGET_POS[k, 0] = pt[0]                 # x
-        #         TARGET_POS[k, 1] = pt[1]                 # y
-        #         TARGET_POS[k, 2] = INIT_XYZS[0, 2]       # z (keep constant altitude)
-
-    # one waypoint index per drone
-    # wp_counters = np.array([0 for _ in range(num_drones)])    #### Initialize the logger #################################
     logger = Logger(logging_freq_hz=control_freq_hz,
                     output_folder=output_folder,
                     colab=colab

@@ -33,8 +33,8 @@ class RRT_GRAPH:
         self.goal_sample_rate = goal_sample_rate # probability of sampling the goal
         self.goal_threshold = goal_threshold # distance threshold to consider goal reached
 
-        self.nodes = [start] # list to store nodes
-        self.parents = [None] # list to store parent indices     
+        self.nodes = [np.array(start)] # list to store nodes
+        self.parents = [None] # list to store parent indices
 
         self._rebuild_kdtree_every = int(rebuild_kdtree_every)
         self._kdtree = None
@@ -52,7 +52,7 @@ class RRT_GRAPH:
     def _rebuild_kdtree_if_needed(self):
         """Rebuild KDTree if enough new nodes have been added since last rebuild"""
         if len(self._recent_indices) >= self._rebuild_kdtree_every:
-            self._rebuild_kdtree()
+            self._rebuild_kdtree()     
 
     def sample(self):
         """Generate random sample point """
@@ -75,7 +75,7 @@ class RRT_GRAPH:
                 distance = dist_recent
                 index = i
         return int(index)
-        
+    
     def steer_step_size(self, q_near, q_rand):
         """Steer from nearest node , q_near, towards sampled point, q_rand,  by step size"""
         direction = q_rand - q_near
@@ -133,7 +133,7 @@ class RRT_GRAPH:
         
         return True
 
-    def add_node_edge(self, q_new, parent_index):
+    def add_node_edge(self, q_new, parent_idx):
         """
         Add new node, q_new,  and parent index to the tree
         q_new is the new node position (in the direction of q_rand) if q_rand is farther than step size from q_near
@@ -171,8 +171,8 @@ class RRT_GRAPH:
         """Build RRT graph"""
         for _ in range(self.n_iterations):
             q_rand = self.sample()
-            index_near = self.nearest_kdtree(q_rand)
-            q_near = self.nodes[index_near]
+            idx_near = self.nearest_kdtree(q_rand)
+            q_near = self.nodes[idx_near]
             q_new = self.steer_step_size(q_near, q_rand)
 
             #collision check
