@@ -3,7 +3,7 @@ import numpy as np
 import random
 import pybullet as p
 
-from kino_double_integrator import connect_star, cost_optimal
+from kino_double_integrator import connect_star_fast, cost_optimal_fast 
 
 class KinoRRTStar:
     def __init__(self, start, goal, n_iterations,
@@ -39,7 +39,7 @@ class KinoRRTStar:
         self.goal_edge = None
 
         self.pyb_client = pyb_client
-        self.obstacle_ids = obstacle_ids or []
+        self.obstacle_ids = set(obstacle_ids or [])
         self.collision_radius = float(collision_radius)
 
     def sample(self):
@@ -54,12 +54,12 @@ class KinoRRTStar:
         return np.array([x, y, z, vx, vy, vz], dtype=float)
 
     def c_star(self, a, b):
-        c, tau = cost_optimal(a, b, tmin=self.tmin, tmax=self.tmax, n=self.n_grid)
+        c, tau = cost_optimal_fast(a, b, tmin=self.tmin, tmax=self.tmax, n=self.n_grid)
         return c, tau
 
     def near_set(self, x_new):
         p_new = x_new[0:3]
-        dpos_max = 0.8  # same idea as in rewire_from; tune
+        dpos_max = 0.5  # same idea as in rewire_from; tune
 
         idxs = []
         for i, x in enumerate(self.nodes):
@@ -80,7 +80,7 @@ class KinoRRTStar:
         best_edge = None
 
         for i in near:
-            edge = connect_star(self.nodes[i], x_i,
+            edge = connect_star_fast(self.nodes[i], x_i,
                                 tmin=self.tmin, tmax=self.tmax, n_grid=self.n_grid,
                                 n_samples=10)
             if not self.edge_collision_free(edge):
@@ -97,7 +97,7 @@ class KinoRRTStar:
         x_new = self.nodes[new_index]
         p_new = x_new[0:3]
 
-        dpos_max = 0.3   # tune
+        dpos_max = 0.5   # tune
 
         for i, x in enumerate(self.nodes):
             if i == new_index:
@@ -113,7 +113,7 @@ class KinoRRTStar:
             if c >= self.r:
                 continue
 
-            edge = connect_star(x_new, x, tmin=self.tmin, tmax=self.tmax, n_grid=self.n_grid, n_samples=10)
+            edge = connect_star_fast(x_new, x, tmin=self.tmin, tmax=self.tmax, n_grid=self.n_grid, n_samples=10)
             if not self.edge_collision_free(edge):
                 continue
 
@@ -130,7 +130,7 @@ class KinoRRTStar:
         if c >= self.goal_r:
             return
 
-        edge = connect_star(x_new, self.goal,
+        edge = connect_star_fast(x_new, self.goal,
                             tmin=self.tmin, tmax=self.tmax, n_grid=self.n_grid,
                             n_samples=20)
         if not self.edge_collision_free(edge):
@@ -145,24 +145,32 @@ class KinoRRTStar:
         if (self.pyb_client is None) or (not self.obstacle_ids):
             return True
 
-        xs = edge["xs"]  # shape (N, 6), positions are xs[:,0:3]
+        xs = edge["xs"]
         r = self.collision_radius
-        offsets = [
-            np.array([0, 0, 0]),
-            np.array([ r, 0, 0]),
-            np.array([-r, 0, 0]),
-            np.array([0,  r, 0]),
-            np.array([0, -r, 0]),
-        ]
-        for k in range(len(xs) - 1):
-            p0 = xs[k, 0:3]
-            p1 = xs[k + 1, 0:3]
-            for off in offsets:
-                hit_id = p.rayTest((p0 + off).tolist(), (p1 + off).tolist(),
-                                   physicsClientId=self.pyb_client)[0][0]
-                if hit_id in self.obstacle_ids:
-                    return False
+
+        offsets = np.array([
+            [0, 0, 0],
+            [ r, 0, 0],
+            [-r, 0, 0],
+            [0,  r, 0],
+            [0, -r, 0],
+        ], dtype=float)
+
+        # Build all rays at once
+        p0 = xs[:-1, 0:3]  # (M,3)
+        p1 = xs[ 1:, 0:3]  # (M,3)
+
+        starts = (p0[:, None, :] + offsets[None, :, :]).reshape(-1, 3)
+        ends   = (p1[:, None, :] + offsets[None, :, :]).reshape(-1, 3)
+
+        results = p.rayTestBatch(starts.tolist(), ends.tolist(), physicsClientId=self.pyb_client)
+
+        # results is list of tuples; [0] is hit body unique id
+        for hit in results:
+            if hit[0] in self.obstacle_ids:
+                return False
         return True
+
 
             
 
@@ -201,18 +209,19 @@ class KinoRRTStar:
         for k in range(1, len(idxs)):
             child = idxs[k]
             parent = idxs[k - 1]
-            edge = connect_star(self.nodes[parent], self.nodes[child],
+            edge = connect_star_fast(self.nodes[parent], self.nodes[child],
                                 tmin=self.tmin, tmax=self.tmax, n_grid=self.n_grid,
                                 n_samples=samples_per_edge)
             xs_all.extend(edge["xs"] if not xs_all else edge["xs"][1:])
 
         # final edge to goal
-        edge_g = connect_star(self.nodes[self.goal_parent], self.goal,
+        edge_g = connect_star_fast(self.nodes[self.goal_parent], self.goal,
                               tmin=self.tmin, tmax=self.tmax, n_grid=self.n_grid,
                               n_samples=samples_per_edge)
         xs_all.extend(edge_g["xs"][1:] if xs_all else edge_g["xs"])
 
         return np.array(xs_all, dtype=float)
+    
 
 def draw_rrt_tree_3d(nodes, parents, pyb_client, line_width=1.0, life_time=0.0):
     for i in range(1, len(nodes)):
@@ -244,3 +253,53 @@ def draw_rrt_path_3d(path_xyz, pyb_client, line_width=2.0, life_time=0.0):
             lifeTime=life_time,
             physicsClientId=pyb_client,
         )
+
+def draw_rrt_tree_3d_curved(nodes, parents, edges, pyb_client,
+                            line_width=1.0, life_time=0.0,
+                            line_color=(0, 1, 0),
+                            max_edges=None, stride=1):
+    """
+    Draws the tree using the sampled trajectory stored in edges[i]["xs"].
+    - edges: list where edges[i] is dict for parent->i (same as KinoRRTStar.edge)
+    - max_edges: optionally limit how many edges to draw (speed)
+    - stride: draw every k-th sample point along an edge (speed)
+    """
+    drawn = 0
+    for i in range(1, len(nodes)):
+        if max_edges is not None and drawn >= max_edges:
+            break
+
+        pi = parents[i]
+        if pi is None:
+            continue
+
+        edge = edges[i]
+        if edge is None or "xs" not in edge:
+            # fallback to straight line
+            p1 = nodes[pi][0:3]
+            p2 = nodes[i][0:3]
+            p.addUserDebugLine(p1.tolist(), p2.tolist(),
+                               lineColorRGB=list(line_color),
+                               lineWidth=line_width,
+                               lifeTime=life_time,
+                               physicsClientId=pyb_client)
+            drawn += 1
+            continue
+
+        xs = edge["xs"]
+        # draw polyline along sampled points
+        for k in range(0, len(xs) - 1, stride):
+            p1 = xs[k, 0:3]
+            p2 = xs[k + 1, 0:3]
+            p.addUserDebugLine(p1.tolist(), p2.tolist(),
+                               lineColorRGB=list(line_color),
+                               lineWidth=line_width,
+                               lifeTime=life_time,
+                               physicsClientId=pyb_client)
+        drawn += 1
+
+def draw_fast_begin(pyb_client):
+    p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0, physicsClientId=pyb_client)
+
+def draw_fast_end(pyb_client):
+    p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1, physicsClientId=pyb_client)

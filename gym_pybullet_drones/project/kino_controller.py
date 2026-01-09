@@ -11,7 +11,7 @@ from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.utils import sync, str2bool
 
-from kino_rrt_star import KinoRRTStar, draw_rrt_tree_3d, draw_rrt_path_3d
+from kino_rrt_star import KinoRRTStar, draw_rrt_tree_3d_curved, draw_rrt_path_3d,  draw_fast_begin, draw_fast_end
 
 DEFAULT_DRONES = DroneModel("cf2x")
 DEFAULT_NUM_DRONES = 1
@@ -70,22 +70,58 @@ def run(
     rrt = KinoRRTStar(
         start=start,
         goal=goal,
-        n_iterations=5000,
+        n_iterations=10000,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 1.0),
         z_limits=(0.1, 1.0),
-        vx_limits=(-1.0, 1.0),
-        vy_limits=(-1.0, 1.0),
-        vz_limits=(-1.0, 1.0),
-        goal_sample_rate=0.1,
-        neighbor_radius=2.0,     # cost-space neighbor radius
+        vx_limits=(-0.2, 0.2),
+        vy_limits=(-0.2, 0.2),
+        vz_limits=(-0.2, 0.2),
+        goal_sample_rate=0.01,
+        neighbor_radius=1.5,     # cost-space neighbor radius
         goal_radius=5,
         tmin=0.1,
         tmax=2.0,
         n_grid=10, pyb_client=PYB_CLIENT, obstacle_ids=OBSTACLE_IDS, collision_radius=0.06
     )
 
+    # Put this around the code you want to measure (e.g., around success = rrt.build()).
+# It prints how long each function took (cumulative + self time), plus call counts.
+
+    import cProfile
+    import pstats
+    import io
+    import time
+
+    pr = cProfile.Profile()
+    t0 = time.perf_counter()
+
+    pr.enable()
+    draw_fast_begin(PYB_CLIENT)
     success = rrt.build()
+    draw_fast_end(PYB_CLIENT)
+    pr.disable()
+
+    t1 = time.perf_counter()
+    print(f"rrt.build() success={success} wall_time={t1 - t0:.3f}s")
+
+    s = io.StringIO()
+    ps = pstats.Stats(pr, stream=s)
+
+    # Sort by cumulative time (time in function + its callees)
+    ps.sort_stats("cumtime")
+
+    # Print ALL functions (can be very long). Change to print_stats(200) to limit.
+    ps.print_stats()
+
+    # Optional: also print by "tottime" (self time only)
+    s2 = io.StringIO()
+    pstats.Stats(pr, stream=s2).sort_stats("tottime").print_stats()
+    print("=== Sorted by cumulative time (cumtime) ===")
+    print(s.getvalue())
+    print("=== Sorted by self time (tottime) ===")
+    print(s2.getvalue())
+
     traj = rrt.extract_trajectory_samples(samples_per_edge=20)
 
     if (not success) or (traj is None) or (len(traj) < 1):
@@ -94,7 +130,10 @@ def run(
 
     TARGET_POS = traj[:, 0:3].astype(float)
 
-    draw_rrt_tree_3d(rrt.nodes, rrt.parents, PYB_CLIENT, life_time=0.0)
+    draw_fast_begin(PYB_CLIENT)
+    draw_rrt_tree_3d_curved(rrt.nodes, rrt.parents, rrt.edge, PYB_CLIENT, life_time=0.0)
+    draw_fast_end(PYB_CLIENT)
+
     draw_rrt_path_3d(TARGET_POS, PYB_CLIENT, life_time=0.0)
 
     # --- PID controller that produces motor commands for CtrlAviary ---
@@ -137,7 +176,7 @@ def run(
             control=np.hstack([TARGET_POS[wp_counter, 0:3], INIT_RPYS[0, :], np.zeros(6)]),
         )
 
-        env.render()
+        #env.render()
         if gui:
             sync(i, START, env.CTRL_TIMESTEP)
 
