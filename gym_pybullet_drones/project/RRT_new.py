@@ -16,7 +16,9 @@ class RRT_GRAPH:
         z_limits,
         goal_sample_rate=0.1,
         goal_threshold=0.05,
-        rebuild_kdtree_every=50
+        rebuild_kdtree_every=50,
+        pyb_client=None,
+        obstacle_ids=None
     ):
         self.start = start # np.array consisting of x, y, z coordinates
         self.goal = goal # np.array consisting of x, y, z coordinates
@@ -39,6 +41,9 @@ class RRT_GRAPH:
 
         self._recent_indices = []
         self._rebuild_kdtree()
+        self._pyb_client = pyb_client
+        self._obstacle_ids = obstacle_ids if obstacle_ids is not None else []
+    
     
     def _rebuild_kdtree(self):
         """Rebuild the KDTree for nearest neighbor search"""
@@ -81,8 +86,33 @@ class RRT_GRAPH:
         else:
             return q_near + (direction / distance) * self.step_size
 
-    def collision_check(self):
-        pass
+    def collision_check(self, q_near, q_new, r=0.08):
+        if self._pyb_client is None or len(self._obstacle_ids) == 0:
+            print("No collision checking possible")
+            return True  # no collision checking possible
+
+        start0 = np.array(q_near, dtype=float)
+        end0   = np.array(q_new, dtype=float)
+
+        offsets = [
+            np.array([0, 0, 0]),
+            np.array([ r, 0, 0]),
+            np.array([-r, 0, 0]),
+            np.array([0,  r, 0]),
+            np.array([0, -r, 0]),
+            ]
+        for off in offsets:
+            start = (start0 + off).tolist()
+            end   = (end0 + off).tolist()
+            hit_object_id = p.rayTest(start, end, physicsClientId=self._pyb_client)[0][0]
+
+            if hit_object_id in self._obstacle_ids:
+                return False
+
+        if hit_object_id != -1 and hit_object_id not in self._obstacle_ids:
+            print("Ray hit non obstacle:", hit_object_id)
+
+        return True
 
     def add_node_edge(self, q_new, parent_index):
         """
@@ -126,9 +156,8 @@ class RRT_GRAPH:
             q_near = self.nodes[index_near]
             q_new = self.steer_step_size(q_near, q_rand)
 
-            # optional collision check
-            # if not self.collision_check(q_near, q_new):
-            #     continue
+            if not self.collision_check(q_near, q_new):
+                continue
 
             new_index = self.add_node_edge(q_new, index_near)
             self._rebuild_kdtree_if_needed()

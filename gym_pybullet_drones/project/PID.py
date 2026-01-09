@@ -56,7 +56,7 @@ def run(
     #### Initialize the simulation #############################
     H = .1 # initial height
     R = .3 # radius of the circle
-    INIT_XYZS = np.array([[0, 0, 0.1]])  # Initial positions of the drones
+    INIT_XYZS = np.array([[-1, -1, 0.1]])  # Initial positions of the drones
     INIT_RPYS = np.array([[0, 0,  0]]) # Initial orientations of the drones (roll, pitch, yaw)
 
     #### Create the environment ################################
@@ -82,7 +82,7 @@ def run(
 
     # ---------- build and draw RRT tree here ----------
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
-    goal  = np.array([-4.0, 4.0, 0.6], dtype=float) # choose any goal in your workspace
+    goal  = np.array([+0.5, +0.5, 0.6], dtype=float) # choose any goal in your workspace
 
     rrt = RRT_GRAPH( 
         start=start,
@@ -94,8 +94,10 @@ def run(
         z_limits=(0.1, 1.0),        
         goal_sample_rate=0.1,
         goal_threshold=0.08, 
-        rebuild_kdtree_every=50
-    )
+        rebuild_kdtree_every=50,
+        pyb_client=PYB_CLIENT,
+        obstacle_ids=OBSTACLE_IDS
+    ) # create RRT graph instance
 
     success = rrt.build()
     path = rrt.extract_path()
@@ -181,7 +183,7 @@ def run(
             target_pos=TARGET_POS[wp_counter],
             target_rpy=INIT_RPYS[0, :]
         )
-        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.0 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
+        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.06 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
             wp_counter += 1
 
         logger.log(
