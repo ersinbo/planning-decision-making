@@ -54,8 +54,8 @@ def run(
     #### Initialize the simulation #############################
     H = .1 # initial height
     R = .3 # radius of the circle
-    INIT_XYZS = np.array([[0, 0, 0.1]])  # Initial positions of the drones
-    INIT_RPYS = np.array([[0, 0,  0]]) # Initial orientations of the drones (roll, pitch, yaw)
+    INIT_XYZS = np.array([[-1.0, -1.0, 0.1]])
+    INIT_RPYS = np.array([[0.0, 0.0, 0.0]])
 
     #### Create the environment ################################
     env = CtrlAviary(drone_model=drone,
@@ -77,12 +77,12 @@ def run(
 
     # ---------- build and draw RRT tree here ----------
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
-    goal  = np.array([0.5, 0.8, 0.6], dtype=float) # choose any goal in your workspace
+    goal  = np.array([0.9, 0.5, 0.6], dtype=float) # choose any goal in your workspace
 
     rrt = RRTStar_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=150,
+        n_iterations=1500,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 1.0),
