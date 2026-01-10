@@ -41,10 +41,86 @@ class KinoRRTStar:
         self.pyb_client = pyb_client
         self.obstacle_ids = set(obstacle_ids or [])
         self.collision_radius = float(collision_radius)
+        self.path_bias_start_iter = 2000      # when to start biasing
+        self.path_bias_prob_max   = 0.7       # max probability to sample near path
+        self.path_sigma_pos       = 0.15      # meters
+        self.path_sigma_vel       = 0.05      # m/s
+        self._cached_path = None
+        self._cached_path_iter = -1
+        self._path_cache_period = 200  # update every 200 iterations
 
-    def sample(self):
+
+    def get_cached_best_path(self, it):
+        '''
+        save the best path states so it can be used to find closer points
+        '''
+        if self.goal_parent is None:
+            return None
+        if (self._cached_path is None) or (it - self._cached_path_iter >= self._path_cache_period):
+            self._cached_path = self.best_path_states()
+            self._cached_path_iter = it
+        return self._cached_path
+
+    def best_path_states(self):
+        '''
+        Get the best path states from the start to the goal.
+        '''
+
+        if self.goal_parent is None:
+            return None
+        idxs = []
+        i = self.goal_parent
+        while i is not None:
+            idxs.append(i)
+            i = self.parents[i]
+        idxs.reverse()
+        states = [self.nodes[j] for j in idxs]
+        states.append(self.goal)
+        return np.array(states, dtype=float)
+    
+
+
+    def sample_near_path(self, path_states):
+        '''
+        Sample a state near the given path states.
+        state consists of (x, y, z, vx, vy, vz)
+        '''
+        x = path_states[random.randrange(len(path_states))].copy()
+
+        x[0:3] += np.random.normal(0.0, self.path_sigma_pos, size=3) # position noise
+        x[3:6] += np.random.normal(0.0, self.path_sigma_vel, size=3) # velocity noise
+
+        # clamp to bounds
+        x[0] = np.clip(x[0], *self.x_limits) 
+        x[1] = np.clip(x[1], *self.y_limits)
+        x[2] = np.clip(x[2], *self.z_limits)
+        x[3] = np.clip(x[3], *self.vx_limits)
+        x[4] = np.clip(x[4], *self.vy_limits)
+        x[5] = np.clip(x[5], *self.vz_limits)
+        return x
+
+
+    def sample(self, it=0):
+        '''
+        Sample a state from the RRT* tree.
+
+        '''
+        # Goal bias
         if random.random() < self.goal_sample_rate:
             return self.goal.copy()
+
+        # If a solution exists bias towards path
+        if (self.goal_parent is not None) and (it >= self.path_bias_start_iter): # If a solution exists bias towards path and after number of iterations
+            denom = max(1, self.n_iterations - self.path_bias_start_iter)
+            p_bias = self.path_bias_prob_max * (it - self.path_bias_start_iter) / denom
+            p_bias = float(np.clip(p_bias, 0.0, self.path_bias_prob_max))
+
+            if random.random() < p_bias:
+                path_states = self.get_cached_best_path(it)
+                if path_states is not None and len(path_states) >= 2:
+                    return self.sample_near_path(path_states)
+
+        # Otherwise uniform sampling
         x  = random.uniform(*self.x_limits)
         y  = random.uniform(*self.y_limits)
         z  = random.uniform(*self.z_limits)
@@ -53,24 +129,37 @@ class KinoRRTStar:
         vz = random.uniform(*self.vz_limits)
         return np.array([x, y, z, vx, vy, vz], dtype=float)
 
+
+
     def c_star(self, a, b):
+        # Compute the cost and time to go from state a to state b
         c, tau = cost_optimal_fast(a, b, tmin=self.tmin, tmax=self.tmax, n=self.n_grid)
         return c, tau
 
     def near_set(self, x_new):
+        '''
+        Find all nodes near the new node.
+        '''
         p_new = x_new[0:3]
-        dpos_max = 0.5  # same idea as in rewire_from; tune
+
+        dpos_max = 0.7
+        d2_max = dpos_max * dpos_max
 
         idxs = []
         for i, x in enumerate(self.nodes):
-            if np.linalg.norm(x[0:3] - p_new) > dpos_max:
+            if np.sum((x[0:3] - p_new)**2) > d2_max: 
                 continue
+
             c, _ = self.c_star(x, x_new)
             if c < self.r:
                 idxs.append(i)
         return idxs
 
+
     def choose_parent(self, x_i):
+        '''
+        Choose the best parent for the new node.
+        '''
         near = self.near_set(x_i)
         if not near:
             return None, None
@@ -94,24 +183,27 @@ class KinoRRTStar:
         return best_parent, best_edge
 
     def rewire_from(self, new_index):
+        '''
+        Rewire the tree from the new node.
+        '''
         x_new = self.nodes[new_index]
         p_new = x_new[0:3]
 
-        dpos_max = 0.5   # tune
+        dpos_max = 0.8   # tune
 
         for i, x in enumerate(self.nodes):
             if i == new_index:
                 continue
 
-            # cheap prefilter
+            # cheap prefilter for certain distance
             if np.linalg.norm(x[0:3] - p_new) > dpos_max:
                 continue
 
-
-            # expensive kinodynamic test only on survivors
+            # expensive kinodynamic test
             c, _ = self.c_star(x_new, x)
             if c >= self.r:
                 continue
+            
 
             edge = connect_star_fast(x_new, x, tmin=self.tmin, tmax=self.tmax, n_grid=self.n_grid, n_samples=10)
             if not self.edge_collision_free(edge):
@@ -125,6 +217,9 @@ class KinoRRTStar:
 
 
     def try_update_goal(self, new_index):
+        '''
+        Try to update the goal node.
+        '''
         x_new = self.nodes[new_index]
         c, _ = self.c_star(x_new, self.goal)
         if c >= self.goal_r:
@@ -142,6 +237,9 @@ class KinoRRTStar:
             self.goal_edge = edge
 
     def edge_collision_free(self, edge):
+        '''
+        Check if the edge is collision-free.
+        '''
         if (self.pyb_client is None) or (not self.obstacle_ids):
             return True
 
@@ -174,9 +272,32 @@ class KinoRRTStar:
 
             
 
-    def build(self):
-        for _ in range(self.n_iterations):
-            x_i = self.sample()
+    def build(self,
+            max_iterations=None,
+            patience=3000,
+            min_delta=1e-3,
+            warmup=1000,
+            verbose=False):
+        """
+        Run until:
+        - max_iterations reached, OR
+        - goal found and best goal cost hasn't improved by >= min_delta
+            for 'patience' iterations (after warmup).
+
+        patience: number of iterations with no significant improvement before stopping
+        min_delta: required improvement to reset patience
+        warmup: ignore early-stopping before this many iterations (lets tree settle)
+        """
+
+        if max_iterations is None:
+            max_iterations = self.n_iterations
+        max_iterations = int(max_iterations)
+
+        best_cost = float("inf")
+        last_improve_iter = 0
+
+        for it in range(max_iterations):
+            x_i = self.sample(it)
             parent, edge = self.choose_parent(x_i)
             if parent is None:
                 continue
@@ -190,9 +311,27 @@ class KinoRRTStar:
             self.rewire_from(new_index)
             self.try_update_goal(new_index)
 
+            # ---- early stopping logic ----
+            if self.goal_parent is not None:
+                if self.goal_cost + min_delta < best_cost:
+                    best_cost = self.goal_cost
+                    last_improve_iter = it
+                    if verbose:
+                        print(f"[it={it}] goal_cost improved -> {best_cost:.6f}")
+
+                # only allow stopping after warmup
+                if it >= warmup and (it - last_improve_iter) >= patience:
+                    if verbose:
+                        print(f"[it={it}] early stop: no improvement in {patience} iters. best={best_cost:.6f}")
+                    break
+
         return self.goal_parent is not None
 
+
     def extract_trajectory_samples(self, samples_per_edge=25):
+        '''
+        Extract trajectory samples from the RRT tree for visualization.
+        '''
         if self.goal_parent is None:
             return None
 
@@ -224,6 +363,9 @@ class KinoRRTStar:
     
 
 def draw_rrt_tree_3d(nodes, parents, pyb_client, line_width=1.0, life_time=0.0):
+    '''
+    Draw the RRT tree in 3D.
+    '''
     for i in range(1, len(nodes)):
         pi = parents[i]
         if pi is None:
@@ -240,6 +382,9 @@ def draw_rrt_tree_3d(nodes, parents, pyb_client, line_width=1.0, life_time=0.0):
         )
 
 def draw_rrt_path_3d(path_xyz, pyb_client, line_width=2.0, life_time=0.0):
+    '''
+    Draw the RRT path in 3D.
+    '''
     if path_xyz is None or len(path_xyz) < 2:
         return
     for i in range(len(path_xyz) - 1):
@@ -255,17 +400,20 @@ def draw_rrt_path_3d(path_xyz, pyb_client, line_width=2.0, life_time=0.0):
         )
 
 def draw_rrt_tree_3d_curved(nodes, parents, edges, pyb_client,
-                            line_width=1.0, life_time=0.0,
+                            line_width=0.2, life_time=0.0,
                             line_color=(0, 1, 0),
                             max_edges=None, stride=1):
-    """
-    Draws the tree using the sampled trajectory stored in edges[i]["xs"].
-    - edges: list where edges[i] is dict for parent->i (same as KinoRRTStar.edge)
-    - max_edges: optionally limit how many edges to draw (speed)
-    - stride: draw every k-th sample point along an edge (speed)
-    """
+    '''
+    Draw the RRT tree in 3D with curved edges.
+    '''
+
+    EDGE_STRIDE = 10
     drawn = 0
+
     for i in range(1, len(nodes)):
+        if i % EDGE_STRIDE != 0:
+            continue
+
         if max_edges is not None and drawn >= max_edges:
             break
 
@@ -275,28 +423,32 @@ def draw_rrt_tree_3d_curved(nodes, parents, edges, pyb_client,
 
         edge = edges[i]
         if edge is None or "xs" not in edge:
-            # fallback to straight line
             p1 = nodes[pi][0:3]
             p2 = nodes[i][0:3]
-            p.addUserDebugLine(p1.tolist(), p2.tolist(),
-                               lineColorRGB=list(line_color),
-                               lineWidth=line_width,
-                               lifeTime=life_time,
-                               physicsClientId=pyb_client)
+            p.addUserDebugLine(
+                p1.tolist(), p2.tolist(),
+                lineColorRGB=list(line_color),
+                lineWidth=line_width,
+                lifeTime=life_time,
+                physicsClientId=pyb_client
+            )
             drawn += 1
             continue
 
         xs = edge["xs"]
-        # draw polyline along sampled points
         for k in range(0, len(xs) - 1, stride):
             p1 = xs[k, 0:3]
             p2 = xs[k + 1, 0:3]
-            p.addUserDebugLine(p1.tolist(), p2.tolist(),
-                               lineColorRGB=list(line_color),
-                               lineWidth=line_width,
-                               lifeTime=life_time,
-                               physicsClientId=pyb_client)
+            p.addUserDebugLine(
+                p1.tolist(), p2.tolist(),
+                lineColorRGB=list(line_color),
+                lineWidth=line_width,
+                lifeTime=life_time,
+                physicsClientId=pyb_client
+            )
+
         drawn += 1
+
 
 def draw_fast_begin(pyb_client):
     p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0, physicsClientId=pyb_client)

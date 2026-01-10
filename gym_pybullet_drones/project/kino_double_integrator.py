@@ -3,6 +3,9 @@ import numpy as np
 EPS = 1e-9
 
 def gramian_di_3d(t: float) -> np.ndarray:
+    '''
+    Computes the Gramian matrix for a 3D double integrator system.
+    '''
     t = float(max(t, EPS))
     I = np.eye(3)
     return np.block([
@@ -11,6 +14,9 @@ def gramian_di_3d(t: float) -> np.ndarray:
     ])
 
 def xbar_di_3d(x0: np.ndarray, t: float) -> np.ndarray:
+    '''
+    Computes for uncontrolled state after time t
+    '''
     x0 = np.asarray(x0, dtype=float).reshape(6,)
     p0, v0 = x0[0:3], x0[3:6]
     return np.hstack([p0 + v0*t, v0])
@@ -25,6 +31,9 @@ def xbar_di_3d(x0: np.ndarray, t: float) -> np.ndarray:
 #     return float(t + (e.T @ d).squeeze())
 
 def cost_fixed_tau_fast(x0: np.ndarray, x1: np.ndarray, t: float) -> float:
+    '''
+    Computes the fast cost for a fixed time duration.
+    '''
     x0 = np.asarray(x0, dtype=float).reshape(6,)
     x1 = np.asarray(x1, dtype=float).reshape(6,)
     t = float(max(t, EPS))
@@ -87,6 +96,9 @@ def d_at_tau_fast(x0: np.ndarray, x1: np.ndarray, tau: float) -> np.ndarray:
 
 def cost_optimal_fast(x0: np.ndarray, x1: np.ndarray,
                       tmin: float = 0.05, tmax: float = 3.0, n: int = 30) -> tuple[float, float]:
+    '''
+    Computes the optimal cost and time to go from state x0 to state x1 is a way similar to the paper.
+    '''
     x0 = np.asarray(x0, dtype=float).reshape(6,)
     x1 = np.asarray(x1, dtype=float).reshape(6,)
 
@@ -114,6 +126,7 @@ def cost_optimal_fast(x0: np.ndarray, x1: np.ndarray,
 
 def u_star_di_3d(t: float, tau: float, d: np.ndarray) -> np.ndarray:
     """
+    Compute the optimal control input u(t) for the 3D double integrator.
     From the paper: u(t) = R^{-1} B^T exp(A^T(tau - t)) d
     For 3D double integrator with R=I, B^T selects the last 3 components.
     exp(A^T s) = [[I,0],[sI,I]]

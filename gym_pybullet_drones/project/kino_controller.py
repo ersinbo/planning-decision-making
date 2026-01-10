@@ -19,22 +19,21 @@ DEFAULT_PHYSICS = Physics("pyb")
 DEFAULT_GUI = True
 DEFAULT_RECORD_VISION = True
 DEFAULT_PLOT = False
-DEFAULT_USER_DEBUG_GUI = False
+DEFAULT_USER_DEBUG_GUI = False # Whether to use user debug GUI, this allows for more detailed visualization and debugging
 DEFAULT_OBSTACLES = True
-DEFAULT_SIMULATION_FREQ_HZ = 240
-DEFAULT_CONTROL_FREQ_HZ = 48
-DEFAULT_DURATION_SEC = 20
-DEFAULT_OUTPUT_FOLDER = "results"
-DEFAULT_COLAB = True
+DEFAULT_SIMULATION_FREQ_HZ = 240 # Simulation frequency in Hz
+DEFAULT_CONTROL_FREQ_HZ = 48 # Control frequency in Hz
+DEFAULT_DURATION_SEC = 20 # Duration of the simulation in seconds
+DEFAULT_OUTPUT_FOLDER = "results" # Folder to save results
+DEFAULT_COLAB = False # Whether to use Google Colab
 
 def run(
-    drone=DEFAULT_DRONES,
-    num_drones=DEFAULT_NUM_DRONES,
-    physics=DEFAULT_PHYSICS,
-    gui=DEFAULT_GUI,
-    record_video=DEFAULT_RECORD_VISION,
-    plot=DEFAULT_PLOT,
-    user_debug_gui=DEFAULT_USER_DEBUG_GUI,
+    drone=DEFAULT_DRONES, 
+    physics=DEFAULT_PHYSICS, 
+    gui=DEFAULT_GUI,        
+    record_video=DEFAULT_RECORD_VISION, 
+    plot=DEFAULT_PLOT,      
+    user_debug_gui=DEFAULT_USER_DEBUG_GUI, 
     obstacles=DEFAULT_OBSTACLES,
     simulation_freq_hz=DEFAULT_SIMULATION_FREQ_HZ,
     control_freq_hz=DEFAULT_CONTROL_FREQ_HZ,
@@ -42,12 +41,12 @@ def run(
     output_folder=DEFAULT_OUTPUT_FOLDER,
     colab=DEFAULT_COLAB,
 ):
-    INIT_XYZS = np.array([[-1.0, -1.0, 0.1]])
-    INIT_RPYS = np.array([[0.0, 0.0, 0.0]])
+    INIT_XYZS = np.array([[-1.0, -1.0, 0.1]]) # Initial positions (x, y, z)
+    INIT_RPYS = np.array([[0.0, 0.0, 0.0]]) # Initial orientations (roll, pitch, yaw)
 
     env = CtrlAviary(
         drone_model=drone,
-        num_drones=num_drones,
+        num_drones=1,
         initial_xyzs=INIT_XYZS,
         initial_rpys=INIT_RPYS,
         physics=physics,
@@ -59,11 +58,11 @@ def run(
         obstacles=obstacles,
         user_debug_gui=user_debug_gui,
     )
-    cid = env.getPyBulletClient()
-    p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0, physicsClientId=cid)
-
     PYB_CLIENT = env.getPyBulletClient()
-    OBSTACLE_IDS = getattr(env, "OBSTACLE_IDS", [])    # --- Plan in double-integrator state space ---
+
+    p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0, physicsClientId=PYB_CLIENT) # disable the default PyBullet GUI
+
+    OBSTACLE_IDS = getattr(env, "OBSTACLE_IDS", []) # get obstacle IDs
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2], 0, 0, 0], dtype=float)
     goal  = np.array([0.9, 0.5, 0.6, 0, 0, 0], dtype=float)
 
@@ -74,32 +73,41 @@ def run(
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 1.0),
         z_limits=(0.1, 1.0),
-        vx_limits=(-0.2, 0.2),
-        vy_limits=(-0.2, 0.2),
-        vz_limits=(-0.2, 0.2),
-        goal_sample_rate=0.01,
-        neighbor_radius=1.5,     # cost-space neighbor radius
-        goal_radius=5,
-        tmin=0.1,
-        tmax=2.0,
-        n_grid=10, pyb_client=PYB_CLIENT, obstacle_ids=OBSTACLE_IDS, collision_radius=0.06
+        vx_limits=(-1.0, 1.0),
+        vy_limits=(-1.0, 1.0),
+        vz_limits=(-1.0, 1.0),
+        goal_sample_rate=0.01, # probability of sampling the goal
+        neighbor_radius=2,     # cost-space neighbor radius, NOT IN METERS, but cost
+        goal_radius=5,          # goal region radius, NOT IN METERS, but cost
+        tmin=0.1,               # minimum time duration for a trajectory segment
+        tmax=2.0,               # maximum time duration for a trajectory segment
+        n_grid=15,              # number of time steps for trajectory optimization
+        pyb_client=PYB_CLIENT, obstacle_ids=OBSTACLE_IDS, collision_radius=0.06
     )
 
-    # Put this around the code you want to measure (e.g., around success = rrt.build()).
-# It prints how long each function took (cumulative + self time), plus call counts.
+
+
 
     import cProfile
     import pstats
     import io
     import time
 
-    pr = cProfile.Profile()
-    t0 = time.perf_counter()
+    pr = cProfile.Profile() # create profiler instance for performance measurement of function calls
+    t0 = time.perf_counter() # start timer
 
-    pr.enable()
-    draw_fast_begin(PYB_CLIENT)
-    success = rrt.build()
+    pr.enable() # start tracking functions
+    draw_fast_begin(PYB_CLIENT) # start drawing
+    success = rrt.build(
+    max_iterations=rrt.n_iterations,   # hard cap
+    patience=2000,          # stop if no improvements
+    min_delta=0.1,         # must improve by at least this
+    warmup=2000,            # don't early-stop too early
+    verbose=True
+)
     draw_fast_end(PYB_CLIENT)
+
+    
     pr.disable()
 
     t1 = time.perf_counter()
@@ -111,18 +119,12 @@ def run(
     # Sort by cumulative time (time in function + its callees)
     ps.sort_stats("cumtime")
 
+
     # Print ALL functions (can be very long). Change to print_stats(200) to limit.
-    ps.print_stats()
+    ps.print_stats(30)
 
-    # Optional: also print by "tottime" (self time only)
-    s2 = io.StringIO()
-    pstats.Stats(pr, stream=s2).sort_stats("tottime").print_stats()
-    print("=== Sorted by cumulative time (cumtime) ===")
-    print(s.getvalue())
-    print("=== Sorted by self time (tottime) ===")
-    print(s2.getvalue())
 
-    traj = rrt.extract_trajectory_samples(samples_per_edge=20)
+    traj = rrt.extract_trajectory_samples(samples_per_edge=20) # extract trajectory samples for the drone to follow
 
     if (not success) or (traj is None) or (len(traj) < 1):
         env.close()
@@ -131,16 +133,18 @@ def run(
     TARGET_POS = traj[:, 0:3].astype(float)
 
     draw_fast_begin(PYB_CLIENT)
-    draw_rrt_tree_3d_curved(rrt.nodes, rrt.parents, rrt.edge, PYB_CLIENT, life_time=0.0)
-    draw_fast_end(PYB_CLIENT)
+    #draw_rrt_tree_3d_curved(rrt.nodes, rrt.parents, rrt.edge, PYB_CLIENT, life_time=0.0)
 
     draw_rrt_path_3d(TARGET_POS, PYB_CLIENT, life_time=0.0)
+    draw_fast_end(PYB_CLIENT)
+
 
     # --- PID controller that produces motor commands for CtrlAviary ---
+    
     ctrl = DSLPIDControl(drone_model=drone)
-    logger = Logger(logging_freq_hz=control_freq_hz, output_folder=output_folder, colab=colab)
+    logger = Logger(logging_freq_hz=control_freq_hz, output_folder=output_folder, colab=colab) # create logger instance
 
-    action = np.zeros((num_drones, 4))  # motor commands (e.g., RPM) expected by CtrlAviary
+    action = np.zeros((1, 4))  # motor commands (e.g., RPM) expected by CtrlAviary
     wp_counter = 0
     START = time.time()
 
@@ -189,7 +193,6 @@ def run(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Kinodynamic RRT* + PID tracking in CtrlAviary")
     parser.add_argument("--drone", default=DEFAULT_DRONES, type=DroneModel, metavar="", choices=DroneModel)
-    parser.add_argument("--num_drones", default=DEFAULT_NUM_DRONES, type=int, metavar="")
     parser.add_argument("--physics", default=DEFAULT_PHYSICS, type=Physics, metavar="", choices=Physics)
     parser.add_argument("--gui", default=DEFAULT_GUI, type=str2bool, metavar="")
     parser.add_argument("--record_video", default=DEFAULT_RECORD_VISION, type=str2bool, metavar="")
