@@ -86,51 +86,51 @@ def run(
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
     goal  = np.array([0.0, 2.2, 0.8], dtype=float) # choose any goal in your workspace
 
-    # rrt = RRTStar_GRAPH(
-    #     start=start,
-    #     goal=goal,
-    #     n_iterations=20000,
-    #     step_size=0.15,
-    #     x_limits=(-1.0, 1.0),
-    #     y_limits=(-1.0, 3.0),
-    #     z_limits=(0.01, 1.5),
-    #     goal_sample_rate=0.2,
-    #     goal_threshold=0.08, 
-    #     rebuild_kdtree_every=50,
-    #     pyb_client=PYB_CLIENT,
-    #     obstacle_ids=OBSTACLE_IDS
-    # ) # create RRT graph instance
-
-    rrt = KinoRRTStar(
-        start=np.hstack([start, np.zeros(3)]),  # start at the first drone's initial position with zero velocity
-        goal=np.hstack([goal, np.zeros(3)]),    # goal position with zero velocity
-        n_iterations=50000,
+    rrt = RRTStar_GRAPH(
+        start=start,
+        goal=goal,
+        n_iterations=20000,
+        step_size=0.15,
         x_limits=(-1.0, 1.0),
-        y_limits=(-1.0, 2.5),
-        z_limits=(0.1, 1.5),
-        vx_limits=(-1.0, 1.0),
-        vy_limits=(-1.0, 1.0),
-        vz_limits=(-1.0, 1.0),
-        goal_sample_rate=0.15, 
-        neighbor_radius=2.0,   
-        goal_radius=0.1,       
-        tmin=0.1,              
-        tmax=2.0,              
-        n_grid=10,             
+        y_limits=(-1.0, 3.0),
+        z_limits=(0.01, 1.5),
+        goal_sample_rate=0.2,
+        goal_threshold=0.08, 
+        rebuild_kdtree_every=50,
         pyb_client=PYB_CLIENT,
-        obstacle_ids=OBSTACLE_IDS,
-        collision_radius=0.08
-    ) # create KinoRRT* graph instance
+        obstacle_ids=OBSTACLE_IDS
+    ) # create RRT graph instance
+
+    # rrt = KinoRRTStar(
+    #     start=np.hstack([start, np.zeros(3)]),  # start at the first drone's initial position with zero velocity
+    #     goal=np.hstack([goal, np.zeros(3)]),    # goal position with zero velocity
+    #     n_iterations=50000,
+    #     x_limits=(-1.0, 1.0),
+    #     y_limits=(-1.0, 2.5),
+    #     z_limits=(0.1, 1.5),
+    #     vx_limits=(-1.0, 1.0),
+    #     vy_limits=(-1.0, 1.0),
+    #     vz_limits=(-1.0, 1.0),
+    #     goal_sample_rate=0.15, 
+    #     neighbor_radius=2.0,   
+    #     goal_radius=0.1,       
+    #     tmin=0.1,              
+    #     tmax=2.0,              
+    #     n_grid=10,             
+    #     pyb_client=PYB_CLIENT,
+    #     obstacle_ids=OBSTACLE_IDS,
+    #     collision_radius=0.08
+    # ) # create KinoRRT* graph instance
 
     success = rrt.build()
-    # path = rrt.extract_path() # For RRT, RRT*
-    path = rrt.extract_trajectory_samples(samples_per_edge=20)  # (N,6) For KinoRRT*
+    path = rrt.extract_path() # For RRT, RRT*
+    # path = rrt.extract_trajectory_samples(samples_per_edge=20)  # (N,6) For KinoRRT*
 
     if not success or path is None:
         raise RuntimeError("RRT did not reach the goal (try more iterations / bigger step_size / different goal)")
 
-    # TARGET_POS = np.array(path, dtype=float) # For RRT, RRT*
-    TARGET_POS = path[:, 0:3].astype(float) #For KinoRRT*
+    TARGET_POS = np.array(path, dtype=float) # For RRT, RRT*
+    # TARGET_POS = path[:, 0:3].astype(float) #For KinoRRT*
     NUM_WP = len(TARGET_POS)
 
     for k, pt in enumerate(path): # convert RRT path to TARGET_POS waypoints which the drone will follow

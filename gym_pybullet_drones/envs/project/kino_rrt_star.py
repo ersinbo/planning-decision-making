@@ -252,8 +252,6 @@ class KinoRRTStar:
             [-r, 0, 0],
             [0,  r, 0],
             [0, -r, 0],
-            [0, 0,  r],
-            [0, 0, -r],
         ], dtype=float)
 
         # Build all rays at once

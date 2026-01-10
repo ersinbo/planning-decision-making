@@ -1,8 +1,4 @@
-
-from RRT_new import RRT_GRAPH
-from RRT_star import RRTStar_GRAPH
-from kino_rrt_star import KinoRRTStar
-from kino_rrt_star import draw_rrt_tree_3d, draw_rrt_path_3d
+from RRT_star import RRTStar_GRAPH, draw_rrt_tree_3d, draw_rrt_path_3d
 
 import os
 import time
@@ -16,11 +12,11 @@ import pybullet as p
 import matplotlib.pyplot as plt
 
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
-from gym_pybullet_drones.control.LQRControl import LQRPositionControl
+
 
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary # CtrlAviary is a custom environment for controlling multiple drones in a PyBullet simulation.
 
-# from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl 
+from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl 
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.utils import sync, str2bool 
 DEFAULT_DRONES = DroneModel("cf2x") # CF2X and CF2P are different drone models available in the gym_pybullet_drones library. CF2X is a more advanced model with better performance and stability, while CF2P is a simpler model that is easier to control.
@@ -36,7 +32,7 @@ DEFAULT_SIMULATION_FREQ_HZ = 240 # simulation frequency for the PyBullet physics
 why are the simulation and control frequencies different?
 The simulation frequency (SIMULATION_FREQ_HZ) refers to how often the physics engine updates the state of the simulation, while the control frequency (CONTROL_FREQ_HZ) refers to how often the control inputs are computed and applied to the drones.'''
 DEFAULT_CONTROL_FREQ_HZ = 48 # control frequency for the PID controller
-DEFAULT_DURATION_SEC = 50  # duration of the simulation in seconds
+DEFAULT_DURATION_SEC = 12  # duration of the simulation in seconds
 DEFAULT_OUTPUT_FOLDER = 'results'
 DEFAULT_COLAB = False
 
@@ -58,8 +54,8 @@ def run(
     #### Initialize the simulation #############################
     H = .1 # initial height
     R = .3 # radius of the circle
-    INIT_XYZS = np.array([[-1, -1, 0.1]])  # Initial positions of the drones
-    INIT_RPYS = np.array([[0, 0,  0]]) # Initial orientations of the drones (roll, pitch, yaw)
+    INIT_XYZS = np.array([[-1.0, -1.0, 0.1]])
+    INIT_RPYS = np.array([[0.0, 0.0, 0.0]])
 
     #### Create the environment ################################
     env = CtrlAviary(drone_model=drone,
@@ -77,64 +73,41 @@ def run(
                         )
 
     #### Obtain the PyBullet Client ID from the environment ####
-    PYB_CLIENT = env.getPyBulletClient()
-    
-    OBSTACLE_IDS = env.getObstacleIds() # get the unique IDs assigned to each obstacle in the simulation
-    DRONE_IDS = env.getDroneIds() # get the unique IDs assigned to each drone in the simulation  
+    PYB_CLIENT = env.getPyBulletClient() 
 
     # ---------- build and draw RRT tree here ----------
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
-    goal  = np.array([0.0, 2.2, 0.8], dtype=float) # choose any goal in your workspace
+    goal  = np.array([0.9, 0.5, 0.6], dtype=float) # choose any goal in your workspace
 
-    # rrt = RRTStar_GRAPH(
-    #     start=start,
-    #     goal=goal,
-    #     n_iterations=20000,
-    #     step_size=0.15,
-    #     x_limits=(-1.0, 1.0),
-    #     y_limits=(-1.0, 3.0),
-    #     z_limits=(0.01, 1.5),
-    #     goal_sample_rate=0.2,
-    #     goal_threshold=0.08, 
-    #     rebuild_kdtree_every=50,
-    #     pyb_client=PYB_CLIENT,
-    #     obstacle_ids=OBSTACLE_IDS
-    # ) # create RRT graph instance
-
-    rrt = KinoRRTStar(
-        start=np.hstack([start, np.zeros(3)]),  # start at the first drone's initial position with zero velocity
-        goal=np.hstack([goal, np.zeros(3)]),    # goal position with zero velocity
-        n_iterations=50000,
+    rrt = RRTStar_GRAPH( 
+        start=start,
+        goal=goal,
+        n_iterations=1500,
+        step_size=0.15,
         x_limits=(-1.0, 1.0),
-        y_limits=(-1.0, 2.5),
-        z_limits=(0.1, 1.5),
-        vx_limits=(-1.0, 1.0),
-        vy_limits=(-1.0, 1.0),
-        vz_limits=(-1.0, 1.0),
-        goal_sample_rate=0.15, 
-        neighbor_radius=2.0,   
-        goal_radius=0.1,       
-        tmin=0.1,              
-        tmax=2.0,              
-        n_grid=10,             
-        pyb_client=PYB_CLIENT,
-        obstacle_ids=OBSTACLE_IDS,
-        collision_radius=0.08
-    ) # create KinoRRT* graph instance
+        y_limits=(-1.0, 1.0),
+        z_limits=(0.1, 1.0),        
+        goal_sample_rate=0.1,
+        goal_threshold=0.08,
+        neighbor_radius=0.5
+    ) # create RRT graph instance
 
-    success = rrt.build()
-    # path = rrt.extract_path() # For RRT, RRT*
-    path = rrt.extract_trajectory_samples(samples_per_edge=20)  # (N,6) For KinoRRT*
+    success = rrt.build() # build RRT graph
+    print("RRT* success:", success)
+    print("num nodes:", len(rrt.nodes))
+    print("goal index:", rrt.goal_index)
 
-    if not success or path is None:
+    path = rrt.extract_path()
+    if (not success) or (path is None):
         raise RuntimeError("RRT did not reach the goal (try more iterations / bigger step_size / different goal)")
 
-    # TARGET_POS = np.array(path, dtype=float) # For RRT, RRT*
-    TARGET_POS = path[:, 0:3].astype(float) #For KinoRRT*
-    NUM_WP = len(TARGET_POS)
+    print("path length:", len(path))
 
-    for k, pt in enumerate(path): # convert RRT path to TARGET_POS waypoints which the drone will follow
+    NUM_WP = len(path)
+    TARGET_POS = np.zeros((NUM_WP, 3), dtype=float)
+    for k, pt in enumerate(path):
         TARGET_POS[k, :] = pt
+
 
 
     draw_rrt_tree_3d(rrt.nodes, rrt.parents, PYB_CLIENT, life_time=0.0) # draw RRT TREE in PyBullet
@@ -149,9 +122,8 @@ def run(
     
 
     wp_counter = 0 # waypoint counter
-    # ctrl = DSLPIDControl(drone_model=drone) # create a list of PID controllers, one per drone
-    ctrl = LQRPositionControl(drone_model=drone)
-    
+    ctrl = DSLPIDControl(drone_model=drone) # create a list of PID controllers, one per drone
+
 
     #### Run the simulation ####################################
     action = np.zeros((1, 4))   # (num_drones, 4)
@@ -169,8 +141,9 @@ def run(
             target_pos=TARGET_POS[wp_counter],
             target_rpy=INIT_RPYS[0, :]
         )
-        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.06 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
+        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.05 and wp_counter < NUM_WP - 1:
             wp_counter += 1
+
 
         logger.log(
             drone=0,
@@ -210,4 +183,3 @@ if __name__ == "__main__":
     ARGS = parser.parse_args()
 
     run(**vars(ARGS))
-

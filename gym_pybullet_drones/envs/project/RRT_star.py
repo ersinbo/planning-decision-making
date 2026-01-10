@@ -1,0 +1,196 @@
+import numpy as np
+import random
+import pybullet as p
+
+from RRT_new import RRT_GRAPH
+
+
+class RRTStar_GRAPH(RRT_GRAPH):
+    def __init__(
+        self,
+        start,
+        goal,
+        n_iterations,
+        step_size,
+        x_limits,
+        y_limits,
+        z_limits,
+        goal_sample_rate=0.1,
+        goal_threshold=0.05,
+        rebuild_kdtree_every=50,
+        neighbor_radius=0.5,
+        pyb_client=None,
+        obstacle_ids=None,
+        collision_radius=0.08,
+    ):
+        super().__init__(
+            start,
+            goal,
+            n_iterations,
+            step_size,
+            x_limits,
+            y_limits,
+            z_limits,
+            goal_sample_rate,
+            goal_threshold,
+            rebuild_kdtree_every,
+            pyb_client=pyb_client,
+            obstacle_ids=obstacle_ids,
+        )
+        self.neighbor_radius = neighbor_radius
+        self.collision_radius = float(collision_radius)
+        self.costs = [0.0]          # cost-to-come for each node
+
+    def edge_cost(self, q1, q2):
+        """Compute cost of edge between q1 and q2 (Euclidean distance)."""
+        return np.linalg.norm(q2 - q1)
+    
+    def add_node_edge(self, q_new, parent_index):
+        """Add new node, set parent, and compute its cost-to-come. Return new node index."""  
+        self.nodes.append(q_new)
+        self.parents.append(parent_index)
+
+        new_index = len(self.nodes) - 1
+        self._recent_indices.append(new_index)
+
+        cost_to_new = self.costs[parent_index] + float(np.linalg.norm(q_new - self.nodes[parent_index]))
+        self.costs.append(cost_to_new)
+
+        self._rebuild_kdtree_if_needed()
+        return new_index
+    
+
+    def find_nearby_nodes(self, q_new):
+        """Find indices of nodes within fixed neighbor_radius of q_new."""
+        r = self.neighbor_radius
+        indexes = self._kdtree.query_ball_point(q_new, self.neighbor_radius)
+
+        for i in self._recent_indices:
+            if float(np.linalg.norm(self.nodes[i] - q_new)) <= r:
+                indexes.append(i)
+
+        return list({int(i) for i in indexes})
+    
+    # def find_nearby_nodes(self, q_new):
+    #     """Find indices of nodes within fixed neighbor_radius of q_new (O(n))."""
+    #     idxs = []
+    #     for i, node in enumerate(self.nodes):
+    #         if np.linalg.norm(node - q_new) <= self.neighbor_radius:
+    #             idxs.append(i)
+    #     return idxs
+
+    def best_parent_search(self, q_new, near_indexes, default_parent):
+        """Choose the best parent for q_new from near_indexes based on cost-to-come + edge length."""
+        best_parent = default_parent
+        best_cost = self.costs[default_parent] + np.linalg.norm(self.nodes[default_parent] - q_new)
+
+        for i in near_indexes:
+            i = int(i)
+            # (optional) skip self, though q_new is not in the tree yet
+            new_cost = self.costs[i] + np.linalg.norm(self.nodes[i] - q_new)
+            if new_cost < best_cost:
+                if self.collision_check(self.nodes[i], q_new, r=self.collision_radius):
+                    best_cost = new_cost
+                    best_parent = i
+
+        return best_parent, best_cost
+
+    def _update_subtree_costs(self, root_index):
+        """
+        Update costs for the subtree rooted at root_index using children adjacency.
+        """
+        for child, parent in enumerate(self.parents):
+            if parent == root_index:
+                self.costs[child] = self.costs[root_index] + np.linalg.norm(self.nodes[child] - self.nodes[root_index])
+                self._update_subtree_costs(child)
+
+    def rewire(self, new_index, near_indexes):
+        """Try to rewire nearby nodes through new_index if that lowers their cost."""
+        q_new = self.nodes[new_index]
+
+        for i in near_indexes:
+            if i == new_index:
+                continue
+
+            # cost if we go start -> ... -> new_index -> i
+            new_cost  = self.costs[new_index] + np.linalg.norm(self.nodes[i] - q_new)
+            
+            if i == 0:
+                continue  # never rewire the root
+
+            if new_cost  < self.costs[i]:
+                if self.collision_check(q_new, self.nodes[i], r=self.collision_radius):
+
+                    # re-parent i under new_index
+                    self.parents[i] = new_index
+
+                    # update cost for i, then propagate to its descendants
+                    self.costs[i] = new_cost
+                    self._update_subtree_costs(i)
+
+    def build(self):
+        """Build the RRT* graph (fixed radius)."""
+        best_goal = None
+        best_goal_cost = float("inf")
+
+        for _ in range(self.n_iterations):
+            q_rand = self.sample()
+
+            index_near = self.nearest_kdtree(q_rand)
+            q_near = self.nodes[index_near]
+            q_new = self.steer_step_size(q_near, q_rand)
+
+            if not self.collision_check(q_near, q_new):
+                continue
+
+            near_indexes = self.find_nearby_nodes(q_new)
+
+            best_parent, _ = self.best_parent_search(q_new, near_indexes, index_near)
+
+            new_index = self.add_node_edge(q_new, best_parent)
+
+            # Important: near set for rewiring should include nodes near q_new in the existing tree;
+            # using near_indexes computed before adding is fine.
+            self.rewire(new_index, near_indexes)
+
+            if self.stop_condition(q_new):
+                if self.costs[new_index] < best_goal_cost:
+                    best_goal_cost = self.costs[new_index]
+                    best_goal = new_index
+
+        self.goal_index = best_goal
+        return best_goal is not None
+
+
+# ---------- PyBullet drawing helpers ----------
+def draw_rrt_tree_3d(nodes, parents, pyb_client, line_width=1.0, life_time=0.0):
+    for i in range(1, len(nodes)):
+        pi = parents[i]
+        if pi is None:
+            continue
+        p1 = nodes[pi]
+        p2 = nodes[i]
+        p.addUserDebugLine(
+            [float(p1[0]), float(p1[1]), float(p1[2])],
+            [float(p2[0]), float(p2[1]), float(p2[2])],
+            lineColorRGB=[0, 1, 0],
+            lineWidth=line_width,
+            lifeTime=life_time,
+            physicsClientId=pyb_client,
+        )
+
+
+def draw_rrt_path_3d(path, pyb_client, line_width=2.0, life_time=0.0):
+    if path is None or len(path) < 2:
+        return
+    for i in range(len(path) - 1):
+        p1 = path[i]
+        p2 = path[i + 1]
+        p.addUserDebugLine(
+            [float(p1[0]), float(p1[1]), float(p1[2])],
+            [float(p2[0]), float(p2[1]), float(p2[2])],
+            lineColorRGB=[1, 0, 0],
+            lineWidth=line_width,
+            lifeTime=life_time,
+            physicsClientId=pyb_client,
+        )
