@@ -14,11 +14,11 @@ import pybullet as p
 import matplotlib.pyplot as plt
 
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
-
+from gym_pybullet_drones.control.LQRControl import LQRPositionControl
 
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary # CtrlAviary is a custom environment for controlling multiple drones in a PyBullet simulation.
 
-from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl 
+# from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl 
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.utils import sync, str2bool 
 DEFAULT_DRONES = DroneModel("cf2x") # CF2X and CF2P are different drone models available in the gym_pybullet_drones library. CF2X is a more advanced model with better performance and stability, while CF2P is a simpler model that is easier to control.
@@ -56,7 +56,7 @@ def run(
     #### Initialize the simulation #############################
     H = .1 # initial height
     R = .3 # radius of the circle
-    INIT_XYZS = np.array([[0, 0, 0.1]])  # Initial positions of the drones
+    INIT_XYZS = np.array([[-1, -1, 0.1]])  # Initial positions of the drones
     INIT_RPYS = np.array([[0, 0,  0]]) # Initial orientations of the drones (roll, pitch, yaw)
 
     #### Create the environment ################################
@@ -93,12 +93,12 @@ def run(
         y_limits=(-10.0, 10.0),
         z_limits=(0.1, 1.0),
         goal_sample_rate=0.1,
-        goal_threshold=0.08,
+        goal_threshold=0.08, 
         rebuild_kdtree_every=50,
         pyb_client=PYB_CLIENT,
         obstacle_ids=OBSTACLE_IDS
     ) # create RRT graph instance
-    
+
     success = rrt.build()
     path = rrt.extract_path()
 
@@ -123,9 +123,10 @@ def run(
                     ) # logger instance to record simulation data for analysis and plotting
     
 
-    wp_counter = np.zeros(num_drones, dtype=int)# waypoint counter
-    ctrl = DSLPIDControl(drone_model=drone) # create a list of PID controllers, one per drone
-
+    wp_counter = 0 # waypoint counter
+    # ctrl = DSLPIDControl(drone_model=drone) # create a list of PID controllers, one per drone
+    ctrl = LQRPositionControl(drone_model=drone)
+    
 
     #### Run the simulation ####################################
     action = np.zeros((1, 4))   # (num_drones, 4)
@@ -143,7 +144,7 @@ def run(
             target_pos=TARGET_POS[wp_counter],
             target_rpy=INIT_RPYS[0, :]
         )
-        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.0 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
+        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.06 and wp_counter < NUM_WP - 1:  # check if the drone is close enough to the current waypoint
             wp_counter += 1
 
         logger.log(
