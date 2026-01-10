@@ -14,11 +14,11 @@ import pybullet as p
 import matplotlib.pyplot as plt
 
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
-
+from gym_pybullet_drones.control.LQRControl import LQRPositionControl
 
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary # CtrlAviary is a custom environment for controlling multiple drones in a PyBullet simulation.
 
-from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl 
+# from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl 
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.utils import sync, str2bool 
 DEFAULT_DRONES = DroneModel("cf2x") # CF2X and CF2P are different drone models available in the gym_pybullet_drones library. CF2X is a more advanced model with better performance and stability, while CF2P is a simpler model that is easier to control.
@@ -164,8 +164,9 @@ def run(
     
 
     wp_counter = 0 # waypoint counter
-    ctrl = DSLPIDControl(drone_model=drone) # create a list of PID controllers, one per drone
-
+    # ctrl = DSLPIDControl(drone_model=drone) # create a list of PID controllers, one per drone
+    ctrl = LQRPositionControl(drone_model=drone)
+    
 
     #### Run the simulation ####################################
     action = np.zeros((1, 4))   # (num_drones, 4)
