@@ -125,17 +125,17 @@ def run(
 
     # ---------- build and draw RRT tree here ----------
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
-    goal  = np.array([0.0, 1.0, 0.9], dtype=float) # choose any goal in your workspace
+    goal  = np.array([0.0, 1.0, 0.8], dtype=float) # choose any goal in your workspace
 
     PLANNER_TYPE = "RRT*" # set to "RRT", "RRT*", or "Kinodynamic RRT*"
 
-    rrt = RRT_GRAPH( 
+    rrt = RRTStar_GRAPH( 
         start=start,
         goal=goal,
         n_iterations=5000,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
-        y_limits=(-1.0, 1.5),
+        y_limits=(-1.0, 1.0),
         z_limits=(0.01, 1.5),        
         goal_sample_rate=0.01,
         goal_threshold=0.08, 
