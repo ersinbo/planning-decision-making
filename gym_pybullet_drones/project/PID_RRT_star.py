@@ -16,7 +16,7 @@ from gym_pybullet_drones.utils.enums import DroneModel, Physics
 
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary # CtrlAviary is a custom environment for controlling multiple drones in a PyBullet simulation.
 
-from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl 
+from gym_pybullet_drones.control.LQRControl import LQRPositionControl
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.utils import sync, str2bool 
 DEFAULT_DRONES = DroneModel("cf2x") # CF2X and CF2P are different drone models available in the gym_pybullet_drones library. CF2X is a more advanced model with better performance and stability, while CF2P is a simpler model that is easier to control.
@@ -82,7 +82,7 @@ def run(
     rrt = RRTStar_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=1500,
+        n_iterations=1000,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 1.0),
@@ -122,40 +122,95 @@ def run(
     
 
     wp_counter = 0 # waypoint counter
-    ctrl = DSLPIDControl(drone_model=drone) # create a list of PID controllers, one per drone
+    ctrl = LQRPositionControl(drone_model=drone)
+    logger = Logger(logging_freq_hz=control_freq_hz, output_folder=output_folder, colab=colab) # create logger instance
 
+    action = np.zeros((1, 4))  # motor commands (e.g., RPM) expected by CtrlAviary
+    wp_counter = 0
+    START = time.time()
 
-    #### Run the simulation ####################################
-    action = np.zeros((1, 4))   # (num_drones, 4)
-    START = time.time() #used for sim-time to real-time sync 
+    # --- after TARGET_POS is created ---
+    goal_pos = TARGET_POS[-1]
 
-    for i in range(0, int(duration_sec*env.CTRL_FREQ)): 
+    # terminal behavior + smoothing params
+    capture_r = 0.08     # enter goal-hold (m)
+    release_r = 0.12     # exit hold if drift out (m)
+    holding = False
 
-        obs, reward, terminated, truncated, info = env.step(action) # step the environment with the current control inputs. Obs contains the current state of the drone.
+    # optional setpoint low-pass (helps remove index jitter)
+    use_filter = True
+    alpha = 0.15
+    target_pos_f = TARGET_POS[0].copy()
+    goal_tol = 0.08                 # meters
 
-        pos = obs[0][0:3]  # current position of the drone
+    for i in range(int(duration_sec * env.CTRL_FREQ)):
+        obs, reward, terminated, truncated, info = env.step(action)
 
-        action[0,:], _, _ = ctrl.computeControlFromState(
+        pos = obs[0][0:3]
+        now_t = i / env.CTRL_FREQ
+
+        dist_goal = np.linalg.norm(pos - goal_pos)
+
+        dist_goal = np.linalg.norm(pos - goal_pos)
+        if dist_goal < goal_tol:
+            break
+      
+
+        # --- goal capture + hold (hysteresis) ---
+        if (not holding) and dist_goal < capture_r:
+            holding = True
+        elif holding and dist_goal > release_r:
+            holding = False
+
+        if holding:
+            target_pos = goal_pos
+        else:
+            # --- lookahead that shrinks near the goal ---
+            lookahead_dist = 0.35
+            max_step = 7
+
+            if dist_goal < 0.6:
+                lookahead_dist = 0.15
+                max_step = 3
+            if dist_goal < 0.2:
+                lookahead_dist = 0.04
+                max_step = 2
+
+            # advance wp_counter to the closest point ahead (monotone)
+            while wp_counter < len(TARGET_POS) - 1 and np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.15:
+                wp_counter += 1
+
+            # pick lookahead index ahead of wp_counter
+            j = wp_counter
+            for _ in range(max_step):
+                if j < len(TARGET_POS) - 1 and np.linalg.norm(pos - TARGET_POS[j]) < lookahead_dist:
+                    j += 1
+            target_pos = TARGET_POS[j]
+
+        # --- optional setpoint filtering (disable while holding if you want exact stop) ---
+        if use_filter and (not holding):
+            target_pos_f = (1 - alpha) * target_pos_f + alpha * target_pos
+            target_cmd = target_pos_f
+        else:
+            target_cmd = target_pos
+
+        # --- controller uses the chosen target ---
+        action[0, :], _, _ = ctrl.computeControlFromState(
             control_timestep=env.CTRL_TIMESTEP,
             state=obs[0],
-            target_pos=TARGET_POS[wp_counter],
-            target_rpy=INIT_RPYS[0, :]
+            target_pos=target_cmd,
+            target_rpy=INIT_RPYS[0, :],
         )
-        if np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.05 and wp_counter < NUM_WP - 1:
-            wp_counter += 1
-
 
         logger.log(
             drone=0,
-            timestamp=i/env.CTRL_FREQ,
+            timestamp=now_t,
             state=obs[0],
-            control=np.hstack([TARGET_POS[wp_counter, 0:3], INIT_RPYS[0, :], np.zeros(6)])
-            )
-        
-        env.render() # render the environment
+            control=np.hstack([target_cmd, INIT_RPYS[0, :], np.zeros(6)]),
+        )
 
         if gui:
-            sync(i, START, env.CTRL_TIMESTEP) # sync sim-time to real-time if GUI is enabled
+            sync(i, START, env.CTRL_TIMESTEP)
 
     env.close()
 

@@ -7,7 +7,7 @@ import numpy as np
 import pybullet as p
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary
-from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
+from gym_pybullet_drones.control.LQRControl import LQRPositionControl
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.utils import sync, str2bool
 
@@ -142,7 +142,7 @@ def run(
 
     # --- PID controller that produces motor commands for CtrlAviary ---
     
-    ctrl = DSLPIDControl(drone_model=drone)
+    ctrl = LQRPositionControl(drone_model=drone)
     logger = Logger(logging_freq_hz=control_freq_hz, output_folder=output_folder, colab=colab) # create logger instance
 
     action = np.zeros((1, 4))  # motor commands (e.g., RPM) expected by CtrlAviary
@@ -186,7 +186,7 @@ def run(
             target_pos = goal_pos
         else:
             # --- lookahead that shrinks near the goal ---
-            lookahead_dist = 0.35
+            lookahead_dist = 0.3
             max_step = 7
 
             if dist_goal < 0.6:

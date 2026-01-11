@@ -77,7 +77,7 @@ class LQRPositionControl(BaseControl):
             [dt * I3]
         ])
 
-        Q = np.diag([30, 30, 40,   6, 6, 8])   # pos/vel weights
+        Q = np.diag([300, 300, 400,   60, 60, 80])   # pos/vel weights
         R = np.diag([1.0, 1.0, 1.5])           # accel penalty
 
         P = solve_discrete_are(A, B, Q, R)

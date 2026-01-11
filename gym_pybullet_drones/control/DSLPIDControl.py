@@ -37,9 +37,9 @@ class DSLPIDControl(BaseControl):
         self.P_COEFF_FOR = np.array([.4, .4, 1.25])
         self.I_COEFF_FOR = np.array([.05, .05, .05])
         self.D_COEFF_FOR = np.array([.2, .2, .5])
-        self.P_COEFF_TOR = np.array([70000., 70000., 60000.])
+        self.P_COEFF_TOR = np.array([700000., 700000., 600000.])
         self.I_COEFF_TOR = np.array([.0, .0, 500.])
-        self.D_COEFF_TOR = np.array([20000., 20000., 12000.])
+        self.D_COEFF_TOR = np.array([200000., 200000., 120000.])
         self.PWM2RPM_SCALE = 0.2685
         self.PWM2RPM_CONST = 4070.3
         self.MIN_PWM = 20000
