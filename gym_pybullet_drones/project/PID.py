@@ -1,6 +1,6 @@
-
 from RRT_new import RRT_GRAPH
-from kino_rrt_star import draw_rrt_tree_3d, draw_rrt_path_3d
+from kino_rrt_star import KinoRRTStar, draw_rrt_tree_3d_curved, draw_rrt_path_3d,  draw_fast_begin, draw_fast_end
+from RRT_star import RRTStar_GRAPH, draw_rrt_tree_3d, draw_rrt_path_3d
 
 import os
 import time
@@ -15,12 +15,15 @@ import matplotlib.pyplot as plt
 
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.control.LQRControl import LQRPositionControl
+from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary # CtrlAviary is a custom environment for controlling multiple drones in a PyBullet simulation.
 
 # from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl 
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.utils import sync, str2bool 
+
+
 DEFAULT_DRONES = DroneModel("cf2x") # CF2X and CF2P are different drone models available in the gym_pybullet_drones library. CF2X is a more advanced model with better performance and stability, while CF2P is a simpler model that is easier to control.
 DEFAULT_NUM_DRONES = 1
 DEFAULT_PHYSICS = Physics("pyb")
@@ -84,10 +87,10 @@ def run(
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
     goal  = np.array([0.0, 2.2, 0.8], dtype=float) # choose any goal in your workspace
 
-    rrt = RRT_GRAPH( 
+    rrt = RRTStar_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=2000,
+        n_iterations=3000,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 3.0),
@@ -99,8 +102,19 @@ def run(
         obstacle_ids=OBSTACLE_IDS
     ) # create RRT graph instance
 
+    import time
+
+    t0 = time.perf_counter() # start timer
+
+    draw_fast_begin(PYB_CLIENT) # TURN THESE OFF FORE TOTAL CALCULATION TIME
     success = rrt.build()
+
+    t1 = time.perf_counter()
+    print(f"rrt.build() success={success} wall_time={t1 - t0:.3f}s")
+
     path = rrt.extract_path()
+
+    draw_fast_end(PYB_CLIENT) # TURN THESE OFF FORE TOTAL CALCULATION TIME
 
     if not success or path is None:
         raise RuntimeError("RRT did not reach the goal (try more iterations / bigger step_size / different goal)")
@@ -121,8 +135,13 @@ def run(
     #     TARGET_POS[k, 2] = z_const
 
     # ---------- DRAW RRT TREE + PATH ----------
-    draw_rrt_tree_3d(rrt.nodes, rrt.parents, PYB_CLIENT, life_time=0.0)
-    draw_rrt_path_3d(path, PYB_CLIENT, life_time=0.0)
+    draw_fast_begin(PYB_CLIENT)
+    #draw_rrt_tree_3d_curved(rrt.nodes, rrt.parents, rrt.edge, PYB_CLIENT, life_time=0.0)
+
+    draw_rrt_path_3d(TARGET_POS, PYB_CLIENT, life_time=0.0)
+    draw_fast_end(PYB_CLIENT)
+
+    START = time.time()
 
     # ------------------------------------------------------
 
@@ -170,7 +189,6 @@ def run(
 
     action = np.zeros((1, 4))  # motor commands (e.g., RPM) expected by CtrlAviary
     wp_counter = 0
-    START = time.time()
 
     # --- after TARGET_POS is created ---
     goal_pos = TARGET_POS[-1]
@@ -185,6 +203,9 @@ def run(
     alpha = 0.15
     target_pos_f = TARGET_POS[0].copy()
     goal_tol = 0.08                 # meters
+
+    
+    t_flight0 = time.perf_counter()
 
     for i in range(int(duration_sec * env.CTRL_FREQ)):
         obs, reward, terminated, truncated, info = env.step(action)
@@ -209,15 +230,15 @@ def run(
             target_pos = goal_pos
         else:
             # --- lookahead that shrinks near the goal ---
-            lookahead_dist = 0.35
-            max_step = 7
+            lookahead_dist = 0.6
+            max_step = 1
 
             if dist_goal < 0.6:
                 lookahead_dist = 0.15
-                max_step = 3
+                max_step = 2
             if dist_goal < 0.2:
                 lookahead_dist = 0.04
-                max_step = 2
+                max_step = 1
 
             # advance wp_counter to the closest point ahead (monotone)
             while wp_counter < len(TARGET_POS) - 1 and np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.15:
@@ -255,6 +276,8 @@ def run(
         if gui:
             sync(i, START, env.CTRL_TIMESTEP)
 
+    t_flight1 = time.perf_counter()
+    print(f"flight_time wall_time={t_flight1 - t_flight0:.3f}s") # here the time of flight
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Helix flight script using CtrlAviary and DSLPIDControl')
     parser.add_argument('--drone',              default=DEFAULT_DRONES,     type=DroneModel,    metavar='', choices=DroneModel)

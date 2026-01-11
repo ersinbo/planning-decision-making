@@ -88,16 +88,12 @@ def run(
 
 
 
-    import cProfile
-    import pstats
-    import io
+
     import time
 
-    pr = cProfile.Profile() # create profiler instance for performance measurement of function calls
     t0 = time.perf_counter() # start timer
 
-    pr.enable() # start tracking functions
-    draw_fast_begin(PYB_CLIENT) # start drawing
+    #draw_fast_begin(PYB_CLIENT) # TURN THESE OFF FORE TOTAL CALCULATION TIME
     success = rrt.build(
     max_iterations=rrt.n_iterations,   # hard cap
     patience=2000,          # stop if no improvements
@@ -105,26 +101,16 @@ def run(
     warmup=2000,            # don't early-stop too early
     verbose=True
 )
-    draw_fast_end(PYB_CLIENT)
+    #draw_fast_end(PYB_CLIENT) # TURN THESE OFF FOR TOTAL CALCULATION TIME
 
     
-    pr.disable()
-
     t1 = time.perf_counter()
     print(f"rrt.build() success={success} wall_time={t1 - t0:.3f}s")
 
-    s = io.StringIO()
-    ps = pstats.Stats(pr, stream=s)
-
-    # Sort by cumulative time (time in function + its callees)
-    ps.sort_stats("cumtime")
 
 
-    # Print ALL functions (can be very long). Change to print_stats(200) to limit.
-    ps.print_stats(30)
 
-
-    traj = rrt.extract_trajectory_samples(samples_per_edge=10) # extract trajectory samples for the drone to follow
+    traj = rrt.extract_trajectory_samples(samples_per_edge=5) # extract trajectory samples for the drone to follow
 
     goal_tol = 0.08                 # meters
     if (not success) or (traj is None) or (len(traj) < 1):
@@ -162,7 +148,7 @@ def run(
     alpha = 0.15
     target_pos_f = TARGET_POS[0].copy()
 
-
+    t_flight0 = time.perf_counter()
     for i in range(int(duration_sec * env.CTRL_FREQ)):
         obs, reward, terminated, truncated, info = env.step(action)
 
@@ -186,15 +172,15 @@ def run(
             target_pos = goal_pos
         else:
             # --- lookahead that shrinks near the goal ---
-            lookahead_dist = 0.3
-            max_step = 7
+            lookahead_dist = 0.6
+            max_step = 3
 
             if dist_goal < 0.6:
                 lookahead_dist = 0.15
-                max_step = 3
+                max_step = 2
             if dist_goal < 0.2:
                 lookahead_dist = 0.04
-                max_step = 2
+                max_step = 1
 
             # advance wp_counter to the closest point ahead (monotone)
             while wp_counter < len(TARGET_POS) - 1 and np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.15:
@@ -231,6 +217,8 @@ def run(
 
         if gui:
             sync(i, START, env.CTRL_TIMESTEP)
+    t_flight1 = time.perf_counter()
+    print(f"flight_time wall_time={t_flight1 - t_flight0:.3f}s")
 
 
 
