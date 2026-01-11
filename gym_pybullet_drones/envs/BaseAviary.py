@@ -1003,7 +1003,7 @@ class BaseAviary(gym.Env):
         self.OBSTACLE_IDS.append(wall_id)
         
         table_path = str(Path(__file__).resolve().parents[1] / "assets" / "table.urdf")
-        table_pos = [0.0, 2.0, 0.0]
+        table_pos = [0.0, 1.0, 0.0]
         table_orn = p.getQuaternionFromEuler([0, 0, 0])
         table_id = p.loadURDF(table_path, table_pos, table_orn, useFixedBase=True, physicsClientId=self.CLIENT)
         self.OBSTACLE_IDS.append(table_id)

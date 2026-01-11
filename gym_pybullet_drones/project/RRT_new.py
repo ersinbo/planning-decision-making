@@ -111,8 +111,8 @@ class RRT_GRAPH:
             if hit_object_id in self._obstacle_ids:
                 return False
 
-        if hit_object_id != -1 and hit_object_id not in self._obstacle_ids:
-            print("Ray hit non obstacle:", hit_object_id)
+        # if hit_object_id != -1 and hit_object_id not in self._obstacle_ids:
+        #     print("Ray hit non obstacle:", hit_object_id)
 
         return True
 

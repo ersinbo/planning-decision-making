@@ -64,19 +64,19 @@ def run(
 
     OBSTACLE_IDS = getattr(env, "OBSTACLE_IDS", []) # get obstacle IDs
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2], 0, 0, 0], dtype=float)
-    goal  = np.array([0.0, 2.2, 0.8, 0, 0, 0], dtype=float)
+    goal  = np.array([0.0, 1.0, 0.9, 0, 0, 0], dtype=float)
 
     rrt = KinoRRTStar(
         start=start,
         goal=goal,
-        n_iterations=9000,
+        n_iterations=5000,
         x_limits=(-1.0, 1.0),
-        y_limits=(-1.0, 3.0),
-        z_limits=(0.1, 1.5),
+        y_limits=(-1.0, 1.2),
+        z_limits=(0.1, 1.0),
         vx_limits=(-1.0, 1.0),
         vy_limits=(-1.0, 1.0),
         vz_limits=(-1.0, 1.0),
-        goal_sample_rate=0.1, # probability of sampling the goal
+        goal_sample_rate=0.01, # probability of sampling the goal
         neighbor_radius=2,     # cost-space neighbor radius, NOT IN METERS, but cost
         goal_radius=5,          # goal region radius, NOT IN METERS, but cost
         tmin=0.1,               # minimum time duration for a trajectory segment
@@ -119,11 +119,11 @@ def run(
 
     TARGET_POS = traj[:, 0:3].astype(float)
 
-    draw_fast_begin(PYB_CLIENT)
-    #draw_rrt_tree_3d_curved(rrt.nodes, rrt.parents, rrt.edge, PYB_CLIENT, life_time=0.0)
+    #draw_fast_begin(PYB_CLIENT)
+    draw_rrt_tree_3d_curved(rrt.nodes, rrt.parents, rrt.edge, PYB_CLIENT, life_time=0.0)
 
     draw_rrt_path_3d(TARGET_POS, PYB_CLIENT, life_time=0.0)
-    draw_fast_end(PYB_CLIENT)
+    #draw_fast_end(PYB_CLIENT)
 
 
     # --- PID controller that produces motor commands for CtrlAviary ---

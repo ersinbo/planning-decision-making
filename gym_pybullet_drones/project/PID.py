@@ -125,19 +125,19 @@ def run(
 
     # ---------- build and draw RRT tree here ----------
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
-    goal  = np.array([0.0, 2.2, 0.8], dtype=float) # choose any goal in your workspace
+    goal  = np.array([0.0, 1.0, 0.9], dtype=float) # choose any goal in your workspace
 
     PLANNER_TYPE = "RRT*" # set to "RRT", "RRT*", or "Kinodynamic RRT*"
 
-    rrt = RRTStar_GRAPH( 
+    rrt = RRT_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=9000,
+        n_iterations=5000,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
-        y_limits=(-1.0, 3.0),
+        y_limits=(-1.0, 1.5),
         z_limits=(0.01, 1.5),        
-        goal_sample_rate=0.1,
+        goal_sample_rate=0.01,
         goal_threshold=0.08, 
         rebuild_kdtree_every=50,
         pyb_client=PYB_CLIENT,
@@ -148,7 +148,7 @@ def run(
 
     t0 = time.perf_counter() # start timer
 
-    draw_fast_begin(PYB_CLIENT) # TURN THESE OFF FORE TOTAL CALCULATION TIME
+    #draw_fast_begin(PYB_CLIENT) # TURN THESE OFF FORE TOTAL CALCULATION TIME
     success = rrt.build()
 
     t1 = time.perf_counter()
@@ -158,7 +158,8 @@ def run(
     path = rrt.extract_path()
 
 
-    draw_fast_end(PYB_CLIENT) # TURN THESE OFF FORE TOTAL CALCULATION TIME
+    
+    #draw_fast_end(PYB_CLIENT) # TURN THESE OFF FORE TOTAL CALCULATION TIME
 
     if not success or path is None:
         raise RuntimeError("RRT did not reach the goal (try more iterations / bigger step_size / different goal)")
