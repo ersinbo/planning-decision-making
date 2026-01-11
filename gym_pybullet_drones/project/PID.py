@@ -12,6 +12,10 @@ import random
 import numpy as np
 import pybullet as p
 import matplotlib.pyplot as plt
+import csv
+from pathlib import Path
+from datetime import datetime
+
 
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.control.LQRControl import LQRPositionControl
@@ -40,6 +44,42 @@ DEFAULT_CONTROL_FREQ_HZ = 48 # control frequency for the PID controller
 DEFAULT_DURATION_SEC = 50  # duration of the simulation in seconds
 DEFAULT_OUTPUT_FOLDER = 'results'
 DEFAULT_COLAB = False
+
+TIMINGS_CSV = Path("results") / "timings.csv"
+
+def append_timings(planner_type: str,
+                   build_wall_time_s: float,
+                   flight_time_s: float,
+                   csv_path: Path = TIMINGS_CSV):
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+
+    total_time_s = build_wall_time_s + flight_time_s
+    diff_flight_minus_build_s = flight_time_s - build_wall_time_s
+
+    header = [
+        "timestamp",
+        "planner_type",
+        "build_wall_time_s",
+        "flight_time_s",
+        "total_time_s",
+        "diff_flight_minus_build_s",
+    ]
+
+    row = [
+        datetime.now().isoformat(timespec="seconds"),
+        planner_type,
+        f"{build_wall_time_s:.6f}",
+        f"{flight_time_s:.6f}",
+        f"{total_time_s:.6f}",
+        f"{diff_flight_minus_build_s:.6f}",
+    ]
+
+    write_header = not csv_path.exists()
+    with csv_path.open("a", newline="") as f:
+        w = csv.writer(f)
+        if write_header:
+            w.writerow(header)
+        w.writerow(row)
 
 def run(
         drone=DEFAULT_DRONES,
@@ -87,10 +127,12 @@ def run(
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
     goal  = np.array([0.0, 2.2, 0.8], dtype=float) # choose any goal in your workspace
 
+    PLANNER_TYPE = "RRT*" # set to "RRT", "RRT*", or "Kinodynamic RRT*"
+
     rrt = RRTStar_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=3000,
+        n_iterations=9000,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 3.0),
@@ -110,9 +152,11 @@ def run(
     success = rrt.build()
 
     t1 = time.perf_counter()
+    build_wall_time_s = t1 - t0
     print(f"rrt.build() success={success} wall_time={t1 - t0:.3f}s")
 
     path = rrt.extract_path()
+
 
     draw_fast_end(PYB_CLIENT) # TURN THESE OFF FORE TOTAL CALCULATION TIME
 
@@ -200,7 +244,7 @@ def run(
 
     # optional setpoint low-pass (helps remove index jitter)
     use_filter = True
-    alpha = 0.15
+    alpha = 0.3
     target_pos_f = TARGET_POS[0].copy()
     goal_tol = 0.08                 # meters
 
@@ -229,27 +273,45 @@ def run(
         if holding:
             target_pos = goal_pos
         else:
-            # --- lookahead that shrinks near the goal ---
-            lookahead_dist = 0.6
-            max_step = 1
+            window = 40
+            i0 = wp_counter
+            i1 = min(wp_counter + window, len(TARGET_POS))
+            dists = np.linalg.norm(TARGET_POS[i0:i1] - pos, axis=1)
+            closest = i0 + int(np.argmin(dists))
 
-            if dist_goal < 0.6:
-                lookahead_dist = 0.15
-                max_step = 2
-            if dist_goal < 0.2:
-                lookahead_dist = 0.04
-                max_step = 1
+            wp_counter = max(wp_counter, closest)
 
-            # advance wp_counter to the closest point ahead (monotone)
-            while wp_counter < len(TARGET_POS) - 1 and np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.15:
-                wp_counter += 1
-
-            # pick lookahead index ahead of wp_counter
+            lookahead_m = 0.25  # slower, smaller = less aggressive
             j = wp_counter
-            for _ in range(max_step):
-                if j < len(TARGET_POS) - 1 and np.linalg.norm(pos - TARGET_POS[j]) < lookahead_dist:
-                    j += 1
+            while j < len(TARGET_POS) - 1 and np.linalg.norm(TARGET_POS[j] - pos) < lookahead_m:
+                j += 1
             target_pos = TARGET_POS[j]
+
+
+        # if holding:
+        #     target_pos = goal_pos
+        # else:
+        #     # --- lookahead that shrinks near the goal ---
+        #     lookahead_dist = 0.8
+        #     max_step = 1
+
+        #     if dist_goal < 0.6:
+        #         lookahead_dist = 0.4
+        #         max_step = 2
+        #     if dist_goal < 0.2:
+        #         lookahead_dist = 0.3
+        #         max_step = 1
+
+        #     # advance wp_counter to the closest point ahead (monotone)
+        #     while wp_counter < len(TARGET_POS) - 1 and np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.15:
+        #         wp_counter += 1
+
+        #     # pick lookahead index ahead of wp_counter
+        #     j = wp_counter
+        #     for _ in range(max_step):
+        #         if j < len(TARGET_POS) - 1 and np.linalg.norm(pos - TARGET_POS[j]) < lookahead_dist:
+        #             j += 1
+        #     target_pos = TARGET_POS[j]
 
         # --- optional setpoint filtering (disable while holding if you want exact stop) ---
         if use_filter and (not holding):
@@ -277,7 +339,16 @@ def run(
             sync(i, START, env.CTRL_TIMESTEP)
 
     t_flight1 = time.perf_counter()
-    print(f"flight_time wall_time={t_flight1 - t_flight0:.3f}s") # here the time of flight
+    flight_time_s = t_flight1 - t_flight0
+    print(f"flight_time wall_time={flight_time_s:.3f}s")
+    print("ABOUT TO WRITE CSV:", PLANNER_TYPE, build_wall_time_s, flight_time_s)
+
+    append_timings(
+        planner_type=PLANNER_TYPE,
+        build_wall_time_s=build_wall_time_s,
+        flight_time_s=flight_time_s,
+    )
+    print(f"Wrote timings to {TIMINGS_CSV}")
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Helix flight script using CtrlAviary and DSLPIDControl')
     parser.add_argument('--drone',              default=DEFAULT_DRONES,     type=DroneModel,    metavar='', choices=DroneModel)
