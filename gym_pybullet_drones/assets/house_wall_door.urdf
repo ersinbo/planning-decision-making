@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<robot name="house_wall_door">
+  <link name="base"/>
+
+  <!-- Left part of wall -->
+  <link name="left">
+    <visual>
+      <origin xyz="-1.025 0 0.8" rpy="0 0 0"/>
+      <geometry><box size="2.55 0.1 1.6"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="-1.025 0 0.8" rpy="0 0 0"/>
+      <geometry><box size="2.55 0.1 1.6"/></geometry>
+    </collision>
+  </link>
+
+  <!-- Right part of wall -->
+  <link name="right">
+    <visual>
+      <origin xyz="1.025 0 0.8" rpy="0 0 0"/>
+      <geometry><box size="2.55 0.1 1.6"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="1.025 0 0.8" rpy="0 0 0"/>
+      <geometry><box size="2.55 0.1 1.6"/></geometry>
+    </collision>
+  </link>
+
+  <!-- Lintel above the door -->
+  <link name="top">
+    <visual>
+      <origin xyz="0 0 1.4" rpy="0 0 0"/>
+      <geometry><box size="0.9 0.1 0.4"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 1.4" rpy="0 0 0"/>
+      <geometry><box size="0.9 0.1 0.4"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="left_fixed" type="fixed">
+    <parent link="base"/><child link="left"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+  <joint name="right_fixed" type="fixed">
+    <parent link="base"/><child link="right"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+  <joint name="top_fixed" type="fixed">
+    <parent link="base"/><child link="top"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+</robot>

@@ -1001,6 +1001,28 @@ class BaseAviary(gym.Env):
 
 
         self.OBSTACLE_IDS.append(wall_id)
+        
+        table_path = str(Path(__file__).resolve().parents[1] / "assets" / "table.urdf")
+        table_pos = [0.0, 2.0, 0.0]
+        table_orn = p.getQuaternionFromEuler([0, 0, 0])
+        table_id = p.loadURDF(table_path, table_pos, table_orn, useFixedBase=True, physicsClientId=self.CLIENT)
+        self.OBSTACLE_IDS.append(table_id)
+
+        assets = Path(__file__).resolve().parents[1] / "assets"
+        p.setAdditionalSearchPath(str(assets))
+
+        DEPTH = 3.45
+        T = 0.1/2
+        plain_wall = str(assets / "house_wall_plain.urdf")
+        door_wall = str(assets / "house_wall_door.urdf")
+
+        yaw90 = p.getQuaternionFromEuler([0, 0, 1.57079632679])
+
+        left_id = p.loadURDF(door_wall, [-DEPTH/2, DEPTH/2 - T, 0.0], yaw90, useFixedBase=True, physicsClientId=self.CLIENT)
+        right_id = p.loadURDF(plain_wall, [DEPTH/2, DEPTH/2 - T, 0.0], yaw90, useFixedBase=True, physicsClientId=self.CLIENT)
+        back_id = p.loadURDF(plain_wall, [0.0, DEPTH - T, 0.0], p.getQuaternionFromEuler([0, 0, 0]), useFixedBase=True, physicsClientId=self.CLIENT)
+
+        self.OBSTACLE_IDS += [left_id, right_id, back_id]
 
     ################################################################################
     

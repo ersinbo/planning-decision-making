@@ -86,7 +86,7 @@ class RRT_GRAPH:
         else:
             return q_near + (direction / distance) * self.step_size
 
-    def collision_check(self, q_near, q_new, r=0.08):
+    def collision_check(self, q_near, q_new, r=0.1):
         if self._pyb_client is None or len(self._obstacle_ids) == 0:
             print("No collision checking possible")
             return True  # no collision checking possible
@@ -100,6 +100,8 @@ class RRT_GRAPH:
             np.array([-r, 0, 0]),
             np.array([0,  r, 0]),
             np.array([0, -r, 0]),
+            np.array([0, 0,  r]),
+            np.array([0, 0, -r]),
             ]
         for off in offsets:
             start = (start0 + off).tolist()

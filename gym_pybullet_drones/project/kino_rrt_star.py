@@ -12,7 +12,7 @@ class KinoRRTStar:
                  goal_sample_rate=0.05,
                  neighbor_radius=0.5,
                  goal_radius=0.5,
-                 tmin=0.05, tmax=3.0, n_grid=30,pyb_client=None, obstacle_ids=None, collision_radius=0.08):
+                 tmin=0.05, tmax=3.0, n_grid=30,pyb_client=None, obstacle_ids=None, collision_radius=0.1):
 
         self.start = np.asarray(start, dtype=float).reshape(6,)
         self.goal  = np.asarray(goal,  dtype=float).reshape(6,)
@@ -252,6 +252,8 @@ class KinoRRTStar:
             [-r, 0, 0],
             [0,  r, 0],
             [0, -r, 0],
+            [0, 0,  r],
+            [0, 0, -r],
         ], dtype=float)
 
         # Build all rays at once

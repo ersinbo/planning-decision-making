@@ -82,7 +82,7 @@ def run(
 
     # ---------- build and draw RRT tree here ----------
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
-    goal  = np.array([-1.0, 1.0, 0.6], dtype=float) # choose any goal in your workspace
+    goal  = np.array([0.0, 2.2, 0.8], dtype=float) # choose any goal in your workspace
 
     rrt = RRT_GRAPH( 
         start=start,
@@ -90,8 +90,8 @@ def run(
         n_iterations=2000,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
-        y_limits=(-1.0, 1.0),
-        z_limits=(0.1, 1.0),        
+        y_limits=(-1.0, 3.0),
+        z_limits=(0.01, 1.5),        
         goal_sample_rate=0.1,
         goal_threshold=0.08, 
         rebuild_kdtree_every=50,
