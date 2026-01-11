@@ -69,7 +69,7 @@ def run(
     rrt = KinoRRTStar(
         start=start,
         goal=goal,
-        n_iterations=10000,
+        n_iterations=4000,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 1.0),
         z_limits=(0.1, 1.0),
@@ -124,8 +124,9 @@ def run(
     ps.print_stats(30)
 
 
-    traj = rrt.extract_trajectory_samples(samples_per_edge=20) # extract trajectory samples for the drone to follow
+    traj = rrt.extract_trajectory_samples(samples_per_edge=10) # extract trajectory samples for the drone to follow
 
+    goal_tol = 0.08                 # meters
     if (not success) or (traj is None) or (len(traj) < 1):
         env.close()
         raise RuntimeError("No goal connection found; increase iterations/radius/time bounds")
@@ -148,9 +149,19 @@ def run(
     wp_counter = 0
     START = time.time()
 
-    # Optional: slow down waypoint switching; otherwise it can “race” through dense points
-    min_wp_dt = 1.0 / float(control_freq_hz)   # at most 1 waypoint per control tick
-    last_wp_switch_t = 0.0
+    # --- after TARGET_POS is created ---
+    goal_pos = TARGET_POS[-1]
+
+    # terminal behavior + smoothing params
+    capture_r = 0.08     # enter goal-hold (m)
+    release_r = 0.12     # exit hold if drift out (m)
+    holding = False
+
+    # optional setpoint low-pass (helps remove index jitter)
+    use_filter = True
+    alpha = 0.15
+    target_pos_f = TARGET_POS[0].copy()
+
 
     for i in range(int(duration_sec * env.CTRL_FREQ)):
         obs, reward, terminated, truncated, info = env.step(action)
@@ -158,31 +169,70 @@ def run(
         pos = obs[0][0:3]
         now_t = i / env.CTRL_FREQ
 
-        target = TARGET_POS[wp_counter]
+        dist_goal = np.linalg.norm(pos - goal_pos)
 
+        dist_goal = np.linalg.norm(pos - goal_pos)
+        if dist_goal < goal_tol:
+            break
+      
+
+        # --- goal capture + hold (hysteresis) ---
+        if (not holding) and dist_goal < capture_r:
+            holding = True
+        elif holding and dist_goal > release_r:
+            holding = False
+
+        if holding:
+            target_pos = goal_pos
+        else:
+            # --- lookahead that shrinks near the goal ---
+            lookahead_dist = 0.35
+            max_step = 7
+
+            if dist_goal < 0.6:
+                lookahead_dist = 0.15
+                max_step = 3
+            if dist_goal < 0.2:
+                lookahead_dist = 0.04
+                max_step = 2
+
+            # advance wp_counter to the closest point ahead (monotone)
+            while wp_counter < len(TARGET_POS) - 1 and np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.15:
+                wp_counter += 1
+
+            # pick lookahead index ahead of wp_counter
+            j = wp_counter
+            for _ in range(max_step):
+                if j < len(TARGET_POS) - 1 and np.linalg.norm(pos - TARGET_POS[j]) < lookahead_dist:
+                    j += 1
+            target_pos = TARGET_POS[j]
+
+        # --- optional setpoint filtering (disable while holding if you want exact stop) ---
+        if use_filter and (not holding):
+            target_pos_f = (1 - alpha) * target_pos_f + alpha * target_pos
+            target_cmd = target_pos_f
+        else:
+            target_cmd = target_pos
+
+        # --- controller uses the chosen target ---
         action[0, :], _, _ = ctrl.computeControlFromState(
             control_timestep=env.CTRL_TIMESTEP,
             state=obs[0],
-            target_pos=target,
+            target_pos=target_cmd,
             target_rpy=INIT_RPYS[0, :],
         )
-
-        # Waypoint switching
-        if wp_counter < len(TARGET_POS) - 1:
-            if (np.linalg.norm(pos - target) < 0.06) and ((now_t - last_wp_switch_t) >= min_wp_dt):
-                wp_counter += 1
-                last_wp_switch_t = now_t
 
         logger.log(
             drone=0,
             timestamp=now_t,
             state=obs[0],
-            control=np.hstack([TARGET_POS[wp_counter, 0:3], INIT_RPYS[0, :], np.zeros(6)]),
+            control=np.hstack([target_cmd, INIT_RPYS[0, :], np.zeros(6)]),
         )
 
-        #env.render()
         if gui:
             sync(i, START, env.CTRL_TIMESTEP)
+
+
 
     env.close()
     logger.save()
