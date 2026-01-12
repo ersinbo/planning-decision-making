@@ -15,3 +15,20 @@ conda activate drones
 pip3 install --upgrade pip
 pip3 install -e . # if needed, `sudo apt install build-essential` to install `gcc` and build `pybullet`
 ```
+
+To run the simulations, 
+```sh
+cd project/
+```
+To run regular RRT,
+```sh
+python run_rrt.py
+```
+To run RRT_star,
+```sh
+python run_rrt_star.py
+```
+To run Kinodynamic RRT star,
+```sh
+python kino_rrt.py
+```
