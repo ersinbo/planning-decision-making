@@ -2,10 +2,10 @@ from RRT_new import RRT_GRAPH
 from kino_rrt_star import KinoRRTStar, draw_rrt_tree_3d_curved, draw_rrt_path_3d,  draw_fast_begin, draw_fast_end, path_length_xyz
 from RRT_star import RRTStar_GRAPH, draw_rrt_tree_3d, draw_rrt_path_3d
 
+import datetime
 import os
 import time
 import argparse
-from datetime import datetime
 import pdb
 import math
 import random
@@ -14,7 +14,6 @@ import pybullet as p
 import matplotlib.pyplot as plt
 import csv
 from pathlib import Path
-from datetime import datetime
 
 
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
@@ -132,11 +131,11 @@ def run(
     rrt = RRTStar_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=7000,
+        n_iterations=5000,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 2.0),
-        z_limits=(0.01, 1.5),        
+        z_limits=(0.2, 1.5),        
         goal_sample_rate=0.1,
         goal_threshold=0.08, 
         rebuild_kdtree_every=50,
@@ -148,8 +147,6 @@ def run(
     import time
 
     t0 = time.perf_counter() # start timer
-
-    #draw_fast_begin(PYB_CLIENT) # TURN THESE OFF FORE TOTAL CALCULATION TIME
     success = rrt.build()
 
     t1 = time.perf_counter()
