@@ -11,7 +11,7 @@ from gym_pybullet_drones.control.LQRControl import LQRPositionControl
 from gym_pybullet_drones.utils.Logger import Logger
 from gym_pybullet_drones.utils.utils import sync, str2bool
 
-from kino_rrt_star import KinoRRTStar, draw_rrt_tree_3d_curved, draw_rrt_path_3d,  draw_fast_begin, draw_fast_end
+from kino_rrt_star import KinoRRTStar, draw_rrt_tree_3d_curved, draw_rrt_path_3d,  draw_fast_begin, draw_fast_end, path_length_xyz
 
 DEFAULT_DRONES = DroneModel("cf2x")
 DEFAULT_NUM_DRONES = 1
@@ -64,15 +64,15 @@ def run(
 
     OBSTACLE_IDS = getattr(env, "OBSTACLE_IDS", []) # get obstacle IDs
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2], 0, 0, 0], dtype=float)
-    goal  = np.array([0.0, 1.0, 0.9, 0, 0, 0], dtype=float)
+    goal  = np.array([-1.0, 0.6, 0.2, 0, 0, 0], dtype=float)
 
     rrt = KinoRRTStar(
         start=start,
         goal=goal,
-        n_iterations=5000,
+        n_iterations=6000,
         x_limits=(-1.0, 1.0),
-        y_limits=(-1.0, 1.2),
-        z_limits=(0.1, 1.0),
+        y_limits=(-1.0, 1.0),
+        z_limits=(0.01, 1.5),    
         vx_limits=(-1.0, 1.0),
         vy_limits=(-1.0, 1.0),
         vz_limits=(-1.0, 1.0),
@@ -82,7 +82,7 @@ def run(
         tmin=0.1,               # minimum time duration for a trajectory segment
         tmax=2.0,               # maximum time duration for a trajectory segment
         n_grid=15,              # number of time steps for trajectory optimization
-        pyb_client=PYB_CLIENT, obstacle_ids=OBSTACLE_IDS, collision_radius=0.06
+        pyb_client=PYB_CLIENT, obstacle_ids=OBSTACLE_IDS, collision_radius=0.1
     )
 
 
@@ -120,7 +120,7 @@ def run(
     TARGET_POS = traj[:, 0:3].astype(float)
 
     #draw_fast_begin(PYB_CLIENT)
-    draw_rrt_tree_3d_curved(rrt.nodes, rrt.parents, rrt.edge, PYB_CLIENT, life_time=0.0)
+    #draw_rrt_tree_3d_curved(rrt.nodes, rrt.parents, rrt.edge, PYB_CLIENT, life_time=0.0)
 
     draw_rrt_path_3d(TARGET_POS, PYB_CLIENT, life_time=0.0)
     #draw_fast_end(PYB_CLIENT)
@@ -139,8 +139,8 @@ def run(
     goal_pos = TARGET_POS[-1]
 
     # terminal behavior + smoothing params
-    capture_r = 0.08     # enter goal-hold (m)
-    release_r = 0.12     # exit hold if drift out (m)
+    capture_r = 0.04    # enter goal-hold (m)
+    release_r = 0.20     # exit hold if drift out (m)
     holding = False
 
     # optional setpoint low-pass (helps remove index jitter)
@@ -172,14 +172,14 @@ def run(
             target_pos = goal_pos
         else:
             # --- lookahead that shrinks near the goal ---
-            lookahead_dist = 0.6
-            max_step = 3
+            lookahead_dist = 0.3
+            max_step = 2
 
-            if dist_goal < 0.6:
+            if dist_goal < 0.3:
                 lookahead_dist = 0.15
                 max_step = 2
             if dist_goal < 0.2:
-                lookahead_dist = 0.04
+                lookahead_dist = 0.1
                 max_step = 1
 
             # advance wp_counter to the closest point ahead (monotone)
@@ -220,7 +220,8 @@ def run(
     t_flight1 = time.perf_counter()
     print(f"flight_time wall_time={t_flight1 - t_flight0:.3f}s")
 
-
+    total_length = path_length_xyz(TARGET_POS)
+    print(total_length)
 
     env.close()
     logger.save()

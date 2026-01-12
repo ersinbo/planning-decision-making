@@ -252,8 +252,8 @@ class KinoRRTStar:
             [-r, 0, 0],
             [0,  r, 0],
             [0, -r, 0],
-            [0, 0,  0.2*r],
-            [0, 0, -r],
+            [0, 0, 0.1*r],
+            [0, 0, -1*r],
         ], dtype=float)
 
         # Build all rays at once
@@ -457,3 +457,11 @@ def draw_fast_begin(pyb_client):
 
 def draw_fast_end(pyb_client):
     p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1, physicsClientId=pyb_client)
+
+def path_length_xyz(points: np.ndarray) -> float:
+    """
+    Total Euclidean length of a 3D polyline.
+    points: (N,3) array
+    """
+    diffs = np.diff(points, axis=0)
+    return float(np.sum(np.linalg.norm(diffs, axis=1)))
