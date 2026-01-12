@@ -1,17 +1,17 @@
-# planning-decision-making
+# Planning and decision making
 
-Names:
-Ersin Borst 5609445
-Rishvant Lachman 5604478
-Mustafa Uslu 5564891
-Siva Raghava 6289118
+This is the code used for the course *47005 Planning and Decision Making*
 
-Tasks:
-- implement 3D RRT   --> Rishvant
-- implement 3D RRT*  --> Rishvant
-- implement static obstacles  --> Musti
-- implement Static obstacle detector  --> Siva
-- fix PID  --> Ersin
-- implement kinodynamic RRT*  --> Ersin
-- Documentation  --> Musti
 
+## Installation
+
+```sh
+git clone https://github.com/ersinbo/planning-decision-making.git
+cd planning-decision-making/
+
+conda create -n drones python=3.10
+conda activate drones
+
+pip3 install --upgrade pip
+pip3 install -e . # if needed, `sudo apt install build-essential` to install `gcc` and build `pybullet`
+```
