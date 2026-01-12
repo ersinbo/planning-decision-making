@@ -16,7 +16,7 @@ pip3 install --upgrade pip
 pip3 install -e . # if needed, `sudo apt install build-essential` to install `gcc` and build `pybullet`
 ```
 
-To run the simulations, 
+In order to run the simulations, go to the following folder:
 ```sh
 cd project/
 ```
