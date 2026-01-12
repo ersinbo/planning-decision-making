@@ -101,7 +101,7 @@ class RRT_GRAPH:
             np.array([0,  r, 0]),
             np.array([0, -r, 0]),
             np.array([0, 0,  0.1*r]),
-            np.array([0, 0, -1.2*r]),
+            np.array([0, 0, -1.7*r]),
             ]
         for off in offsets:
             start = (start0 + off).tolist()

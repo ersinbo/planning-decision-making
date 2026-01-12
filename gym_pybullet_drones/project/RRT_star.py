@@ -18,10 +18,10 @@ class RRTStar_GRAPH(RRT_GRAPH):
         goal_sample_rate=0.1,
         goal_threshold=0.05,
         rebuild_kdtree_every=50,
-        neighbor_radius=0.15,
+        neighbor_radius=0.70,
         pyb_client=None,
         obstacle_ids=None,
-        collision_radius=0.08,
+        collision_radius=0.1,
     ):
         super().__init__(
             start,

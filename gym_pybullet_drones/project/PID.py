@@ -129,10 +129,10 @@ def run(
 
     PLANNER_TYPE = "RRT*" # set to "RRT", "RRT*", or "Kinodynamic RRT*"
 
-    rrt = RRT_GRAPH( 
+    rrt = RRTStar_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=2000,
+        n_iterations=7000,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 2.0),
