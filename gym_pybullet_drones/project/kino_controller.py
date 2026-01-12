@@ -5,6 +5,9 @@ import time
 import argparse
 import numpy as np
 import pybullet as p
+import csv
+from pathlib import Path
+from datetime import datetime
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.envs.CtrlAviary import CtrlAviary
 from gym_pybullet_drones.control.LQRControl import LQRPositionControl
@@ -26,6 +29,42 @@ DEFAULT_CONTROL_FREQ_HZ = 48 # Control frequency in Hz
 DEFAULT_DURATION_SEC = 20 # Duration of the simulation in seconds
 DEFAULT_OUTPUT_FOLDER = "results" # Folder to save results
 DEFAULT_COLAB = False # Whether to use Google Colab
+
+TIMINGS_CSV = Path("results") / "timings.csv"
+
+def append_timings(planner_type: str,
+                   build_wall_time_s: float,
+                   flight_time_s: float,
+                   csv_path: Path = TIMINGS_CSV):
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+
+    total_time_s = build_wall_time_s + flight_time_s
+    diff_flight_minus_build_s = flight_time_s - build_wall_time_s
+
+    header = [
+        "timestamp",
+        "planner_type",
+        "build_wall_time_s",
+        "flight_time_s",
+        "total_time_s",
+        "diff_flight_minus_build_s",
+    ]
+
+    row = [
+        datetime.now().isoformat(timespec="seconds"),
+        planner_type,
+        f"{build_wall_time_s:.6f}",
+        f"{flight_time_s:.6f}",
+        f"{total_time_s:.6f}",
+        f"{diff_flight_minus_build_s:.6f}",
+    ]
+
+    write_header = not csv_path.exists()
+    with csv_path.open("a", newline="") as f:
+        w = csv.writer(f)
+        if write_header:
+            w.writerow(header)
+        w.writerow(row)
 
 def run(
     drone=DEFAULT_DRONES, 
@@ -64,15 +103,15 @@ def run(
 
     OBSTACLE_IDS = getattr(env, "OBSTACLE_IDS", []) # get obstacle IDs
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2], 0, 0, 0], dtype=float)
-    goal  = np.array([-1.0, 0.6, 0.2, 0, 0, 0], dtype=float)
+    goal  = np.array([0.0, 0.9, 0.8, 0, 0, 0], dtype=float)
 
     rrt = KinoRRTStar(
         start=start,
         goal=goal,
         n_iterations=6000,
         x_limits=(-1.0, 1.0),
-        y_limits=(-1.0, 1.0),
-        z_limits=(0.01, 1.5),    
+        y_limits=(-1.0, 1.2),
+        z_limits=(0.1, 1.0),
         vx_limits=(-1.0, 1.0),
         vy_limits=(-1.0, 1.0),
         vz_limits=(-1.0, 1.0),
@@ -105,8 +144,8 @@ def run(
 
     
     t1 = time.perf_counter()
-    print(f"rrt.build() success={success} wall_time={t1 - t0:.3f}s")
-
+    build_wall_time_s = t1 - t0
+    print(f"rrt.build() success={success} wall_time={build_wall_time_s:.3f}s")
 
 
 
@@ -145,7 +184,7 @@ def run(
 
     # optional setpoint low-pass (helps remove index jitter)
     use_filter = True
-    alpha = 0.15
+    alpha = 0.3
     target_pos_f = TARGET_POS[0].copy()
 
     t_flight0 = time.perf_counter()
@@ -171,16 +210,30 @@ def run(
         if holding:
             target_pos = goal_pos
         else:
-            # --- lookahead that shrinks near the goal ---
-            lookahead_dist = 0.3
-            max_step = 2
+            window = 40
+            i0 = wp_counter
+            i1 = min(wp_counter + window, len(TARGET_POS))
+            dists = np.linalg.norm(TARGET_POS[i0:i1] - pos, axis=1)
+            closest = i0 + int(np.argmin(dists))
 
-            if dist_goal < 0.3:
-                lookahead_dist = 0.15
-                max_step = 2
-            if dist_goal < 0.2:
-                lookahead_dist = 0.1
-                max_step = 1
+            wp_counter = max(wp_counter, closest)
+
+            lookahead_m = 0.25  # slower, smaller = less aggressive
+            j = wp_counter
+            while j < len(TARGET_POS) - 1 and np.linalg.norm(TARGET_POS[j] - pos) < lookahead_m:
+                j += 1
+            target_pos = TARGET_POS[j]
+
+            # # --- lookahead that shrinks near the goal ---
+            # lookahead_dist = 0.6
+            # max_step = 3
+
+            # if dist_goal < 0.6:
+            #     lookahead_dist = 0.15
+            #     max_step = 2
+            # if dist_goal < 0.2:
+            #     lookahead_dist = 0.04
+            #     max_step = 1
 
             # advance wp_counter to the closest point ahead (monotone)
             while wp_counter < len(TARGET_POS) - 1 and np.linalg.norm(pos - TARGET_POS[wp_counter]) < 0.15:
@@ -218,10 +271,15 @@ def run(
         if gui:
             sync(i, START, env.CTRL_TIMESTEP)
     t_flight1 = time.perf_counter()
-    print(f"flight_time wall_time={t_flight1 - t_flight0:.3f}s")
+    flight_time_s = t_flight1 - t_flight0
+    print(f"flight_time wall_time={flight_time_s:.3f}s")
 
-    total_length = path_length_xyz(TARGET_POS)
-    print(total_length)
+    append_timings(
+    planner_type="Kinodynamic RRT*",
+    build_wall_time_s=build_wall_time_s,
+    flight_time_s=flight_time_s,
+    )   
+    print(f"Wrote timings to {TIMINGS_CSV}")
 
     env.close()
     logger.save()
