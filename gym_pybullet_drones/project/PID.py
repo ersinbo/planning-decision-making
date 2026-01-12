@@ -1,5 +1,5 @@
 from RRT_new import RRT_GRAPH
-from kino_rrt_star import KinoRRTStar, draw_rrt_tree_3d_curved, draw_rrt_path_3d,  draw_fast_begin, draw_fast_end
+from kino_rrt_star import KinoRRTStar, draw_rrt_tree_3d_curved, draw_rrt_path_3d,  draw_fast_begin, draw_fast_end, path_length_xyz
 from RRT_star import RRTStar_GRAPH, draw_rrt_tree_3d, draw_rrt_path_3d
 
 import os
@@ -32,7 +32,7 @@ DEFAULT_DRONES = DroneModel("cf2x") # CF2X and CF2P are different drone models a
 DEFAULT_NUM_DRONES = 1
 DEFAULT_PHYSICS = Physics("pyb")
 DEFAULT_GUI = True
-DEFAULT_RECORD_VISION = False
+DEFAULT_RECORD_VISION = True
 DEFAULT_PLOT = True
 DEFAULT_USER_DEBUG_GUI = False
 DEFAULT_OBSTACLES = True 
@@ -125,23 +125,24 @@ def run(
 
     # ---------- build and draw RRT tree here ----------
     start = np.array([INIT_XYZS[0, 0], INIT_XYZS[0, 1], INIT_XYZS[0, 2]], dtype=float)  # start at the first drone's initial position
-    goal  = np.array([0.0, 2.2, 0.8], dtype=float) # choose any goal in your workspace
+    goal  = np.array([-1.0, 0.6, 0.2], dtype=float) # choose any goal in your workspace
 
     PLANNER_TYPE = "RRT*" # set to "RRT", "RRT*", or "Kinodynamic RRT*"
 
     rrt = RRTStar_GRAPH( 
         start=start,
         goal=goal,
-        n_iterations=9000,
+        n_iterations=15000,
         step_size=0.15,
         x_limits=(-1.0, 1.0),
-        y_limits=(-1.0, 3.0),
+        y_limits=(-1.0, 2.0),
         z_limits=(0.01, 1.5),        
         goal_sample_rate=0.1,
         goal_threshold=0.08, 
         rebuild_kdtree_every=50,
         pyb_client=PYB_CLIENT,
-        obstacle_ids=OBSTACLE_IDS
+        obstacle_ids=OBSTACLE_IDS,
+        
     ) # create RRT graph instance
 
     import time
@@ -179,11 +180,11 @@ def run(
     #     TARGET_POS[k, 2] = z_const
 
     # ---------- DRAW RRT TREE + PATH ----------
-    draw_fast_begin(PYB_CLIENT)
+    #draw_fast_begin(PYB_CLIENT)
     #draw_rrt_tree_3d_curved(rrt.nodes, rrt.parents, rrt.edge, PYB_CLIENT, life_time=0.0)
 
     draw_rrt_path_3d(TARGET_POS, PYB_CLIENT, life_time=0.0)
-    draw_fast_end(PYB_CLIENT)
+    #draw_fast_end(PYB_CLIENT)
 
     START = time.time()
 
@@ -238,8 +239,8 @@ def run(
     goal_pos = TARGET_POS[-1]
 
     # terminal behavior + smoothing params
-    capture_r = 0.08     # enter goal-hold (m)
-    release_r = 0.12     # exit hold if drift out (m)
+    capture_r = 0.04     # enter goal-hold (m)
+    release_r = 0.20     # exit hold if drift out (m)
     holding = False
 
     # optional setpoint low-pass (helps remove index jitter)
@@ -273,7 +274,7 @@ def run(
         if holding:
             target_pos = goal_pos
         else:
-            window = 40
+            window = 10
             i0 = wp_counter
             i1 = min(wp_counter + window, len(TARGET_POS))
             dists = np.linalg.norm(TARGET_POS[i0:i1] - pos, axis=1)
@@ -342,6 +343,9 @@ def run(
     flight_time_s = t_flight1 - t_flight0
     print(f"flight_time wall_time={flight_time_s:.3f}s")
     print("ABOUT TO WRITE CSV:", PLANNER_TYPE, build_wall_time_s, flight_time_s)
+
+    total_length = path_length_xyz(TARGET_POS)
+    print(total_length)
 
     append_timings(
         planner_type=PLANNER_TYPE,

@@ -96,12 +96,12 @@ class RRT_GRAPH:
 
         offsets = [
             np.array([0, 0, 0]),
-            np.array([ r, 0, 0]),
+            np.array([ 1.2*r, 0, 0]),
             np.array([-r, 0, 0]),
             np.array([0,  r, 0]),
             np.array([0, -r, 0]),
-            np.array([0, 0,  r]),
-            np.array([0, 0, -r]),
+            np.array([0, 0,  0.1*r]),
+            np.array([0, 0, -1.2*r]),
             ]
         for off in offsets:
             start = (start0 + off).tolist()
@@ -111,8 +111,8 @@ class RRT_GRAPH:
             if hit_object_id in self._obstacle_ids:
                 return False
 
-        if hit_object_id != -1 and hit_object_id not in self._obstacle_ids:
-            print("Ray hit non obstacle:", hit_object_id)
+        # if hit_object_id != -1 and hit_object_id not in self._obstacle_ids:
+        #     print("Ray hit non obstacle:", hit_object_id)
 
         return True
 
