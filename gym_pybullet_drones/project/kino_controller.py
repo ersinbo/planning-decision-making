@@ -69,10 +69,10 @@ def run(
     rrt = KinoRRTStar(
         start=start,
         goal=goal,
-        n_iterations=5000,
-        x_limits=(-1.2, 1.0),
+        n_iterations=6000,
+        x_limits=(-1.0, 1.0),
         y_limits=(-1.0, 1.0),
-        z_limits=(0.1, 1.0),    
+        z_limits=(0.01, 1.5),    
         vx_limits=(-1.0, 1.0),
         vy_limits=(-1.0, 1.0),
         vz_limits=(-1.0, 1.0),
